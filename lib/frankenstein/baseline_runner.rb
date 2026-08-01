@@ -9,6 +9,11 @@ module Frankenstein
   # opt-in and doubly gated - by the per-run `execute` flag and by the global
   # `allow_execution` configuration - so the default really is read-only, and
   # even when executing, native (inspection-only) evaluators still run.
+  #
+  # When commands do execute, they run in a *disposable copy* of the repository,
+  # never the original working tree (section 14: "all commands run in a
+  # disposable workspace" and "the baseline is read-only with respect to
+  # repository source"). Inspection-only evaluators still read the original.
   class BaselineRunner
     attr_reader :contract, :execute, :timeout
 
@@ -21,8 +26,23 @@ module Frankenstein
 
     # @return [Baseline]
     def run
+      if execution_allowed?
+        # Commands run inside a throwaway copy so builds/tests cannot mutate the
+        # real checkout (no stray .gem, coverage/, or tmp/ artifacts).
+        Isolation.copy(contract.repository.path) { |workspace| measure(workspace) }
+      else
+        measure(contract.repository.path)
+      end
+    end
+
+    private
+
+    def measure(execution_root)
       results = contract.criteria.map do |criterion|
-        Evaluators.for(criterion, contract: contract, execute: execution_allowed?, timeout: timeout).call
+        Evaluators.for(
+          criterion, contract: contract, execute: execution_allowed?,
+          timeout: timeout, execution_root: execution_root
+        ).call
       end
 
       Baseline.new(
@@ -33,8 +53,6 @@ module Frankenstein
         executed: execution_allowed?
       )
     end
-
-    private
 
     # Execution requires both the per-run request and the global allowance.
     # Native evaluators ignore this flag and always inspect.

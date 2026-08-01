@@ -16,8 +16,15 @@ disclosure timeline.
 
 - **Read-only by default.** Inventory, classification, discovery, and baseline
   require no write permission and never modify repository source.
-- **Bounded execution.** Any executed check runs under a hard wall-clock bound
-  and is opt-in per run and globally.
+- **Disposable-workspace execution.** When checks execute, they run inside a
+  throwaway copy of the repository, never the original working tree, so a build
+  or test cannot mutate the real checkout (no stray artifacts).
+- **Bounded execution.** Any executed check is opt-in (per run and globally) and
+  runs under a hard wall-clock bound that terminates the entire process group,
+  so a spawned child cannot outlive the bound.
+- **Known limitation.** Execution is not yet OS-sandboxed — network egress, user,
+  and resource isolation (spec section 12) are planned but not implemented. Treat
+  `--execute` on untrusted repositories accordingly; it is off by default.
 - **Non-bypassable safety floor.** No configuration layer may loosen verifier
   isolation, remove protected paths (`.frankenstein.yml`, workflows, CODEOWNERS),
   or enable automatic merge in v1.

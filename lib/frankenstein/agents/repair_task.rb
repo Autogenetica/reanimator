@@ -45,12 +45,14 @@ module Frankenstein
 
       # Whether a path is inside the constraints' allowed set (and outside the
       # protected set). Adapters should honor this; the harness enforces it.
+      # Matching is depth-correct via {SafetyFloor.matches?}, so a protected
+      # `dir/**` covers nested files and cannot be evaded by nesting.
       def may_edit?(path)
         protected_paths = Array(constraints[:protected_paths])
-        return false if protected_paths.any? { |glob| File.fnmatch?(glob, path, File::FNM_PATHNAME) }
+        return false if SafetyFloor.protects?(path, protected_paths)
 
         allowed = Array(constraints[:allowed_paths])
-        allowed.empty? || allowed.any? { |glob| File.fnmatch?(glob, path, File::FNM_PATHNAME) }
+        allowed.empty? || allowed.any? { |glob| SafetyFloor.matches?(glob, path) }
       end
     end
   end

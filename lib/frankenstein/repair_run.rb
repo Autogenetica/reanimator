@@ -97,9 +97,14 @@ module Frankenstein
       post.results.none? { |r| proven.include?(r.criterion.id) && !r.verified? }
     end
 
+    # Readiness is *proven*, not assumed: the provider is commissioned against a
+    # disposable fixture and its verdict (ready/degraded/incompatible/unavailable)
+    # decides eligibility. Only a commissioned-ready provider is routed to; any
+    # other verdict fails closed to a safe stop.
     def route
       adapter = Agents.for(connection)
-      profile = AgentProfile.from_adapter(adapter, readiness: adapter.available? ? :ready : :unavailable)
+      readiness = Commissioning::Test.new(adapter).run.readiness
+      profile = AgentProfile.from_adapter(adapter, readiness: readiness)
       Routing::Router.new([profile]).select(required_capabilities: REQUIRED_CAPABILITIES, task_class: @task_class)
     end
 

@@ -51,3 +51,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `Obligation` (idempotent, deduplicated), `ProposedChange`, `Run` (section 17
   ledger), and an `Isolation` disposable-workspace helper.
 - CLI addition: `frankenstein repair`.
+
+### Fixed
+
+- Baseline/repair command execution now runs in a disposable copy of the
+  repository, never the original working tree (spec section 14), so `gem build`,
+  tests, and other checks cannot leave artifacts in the real checkout.
+- Bounded commands run as their own process group and terminate the whole group
+  on timeout, so a spawned child cannot outlive the bound.
+- Protected-path matching is depth-correct: a protected `dir/**` now covers
+  nested files (e.g. `.github/workflows/nested/*.yml`) instead of only the top
+  level, and allow globs cover nested paths too.
+- The `tests` acceptance criterion now carries the provenance of its discovered
+  command (a criterion-id/fact-key mismatch previously dropped it).
+- Bounded repair proves agent readiness by commissioning before routing, rather
+  than assuming readiness from mere availability.

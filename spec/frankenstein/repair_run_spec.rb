@@ -61,6 +61,12 @@ RSpec.describe Frankenstein::RepairRun do
       result: Frankenstein::Agents::Result.new(plan: "tried", patch: Frankenstein::Agents::Patch.write("lib/calc.rb", BROKEN_LIB))
     )
     allow(Frankenstein::Agents).to receive(:for).and_return(scripted)
+    # The provider commissions ready; it is the repair on THIS repo that fails
+    # to verify, which is exactly the report (not safe-stop) outcome.
+    allow(Frankenstein::Commissioning::Test).to receive(:new).and_return(
+      instance_double(Frankenstein::Commissioning::Test,
+        run: instance_double(Frankenstein::Commissioning::Report, readiness: :ready))
+    )
 
     run = run_for(broken_repo(repair: :allowed))
     expect(run.outcome).to eq(:report)

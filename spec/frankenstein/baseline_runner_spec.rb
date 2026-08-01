@@ -94,5 +94,27 @@ RSpec.describe Frankenstein::BaselineRunner do
       expect(baseline.executed?).to be(false)
       expect(baseline.results.find { |r| r.criterion.id == :ok }.status).to eq(:planned)
     end
+
+    it "runs commands in a disposable copy, leaving the original tree untouched" do
+      path = make_repo(files: {
+        ".frankenstein.yml" => <<~YAML
+          version: 1
+          intent: maintain
+          profile: generic
+          acceptance:
+            checks:
+              - id: writes
+                run: "touch sentinel.txt"
+                required: true
+        YAML
+      })
+      contract = Frankenstein::EffectivePolicyResolver.new(Frankenstein::Repository.at(path)).resolve
+      baseline = described_class.new(contract, execute: true).run
+
+      # The command ran (exit 0), but its side effect landed in the throwaway
+      # copy - the real working tree never sees sentinel.txt.
+      expect(baseline.results.find { |r| r.criterion.id == :writes }).to be_verified
+      expect(File.exist?(File.join(path, "sentinel.txt"))).to be(false)
+    end
   end
 end
