@@ -83,6 +83,36 @@ module Frankenstein
       end
     end
 
+    desc "agents", "List coding-agent providers and whether each is available"
+    def agents
+      guard { puts Reports::Agents.new(Frankenstein.adapters).render }
+    end
+
+    desc "commission", "Prove a coding agent is ready via a synthetic repair (no repository writes)"
+    long_desc <<~DESC
+      Stage 5 of onboarding. Runs the commissioning test from section 08: a
+      synthetic repair against a disposable fixture, graded independently by
+      Frankenstein's own evaluators. The default local agent always runs; hosted
+      providers report themselves unavailable until connected.
+    DESC
+    option :provider, default: "local", desc: "Provider to commission (local, codex, claude, amp)"
+    def commission
+      guard do
+        report = Frankenstein.commission(provider: options[:provider].to_sym)
+        puts Reports::Commissioning.new(report).render
+        exit 1 unless report.ready? || report.readiness == :unavailable
+      end
+    end
+
+    desc "permissions [PATH]", "Show resolved autonomy per task class for a repository"
+    option :intent, desc: "Override the inferred lifecycle intent"
+    def permissions(path = Dir.pwd)
+      guard do
+        contract = Frankenstein.contract(path, intent: options[:intent]&.to_sym)
+        puts Reports::Permissions.new(contract).render
+      end
+    end
+
     private
 
     def render_baseline(baseline, format)

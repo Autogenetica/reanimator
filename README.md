@@ -121,6 +121,43 @@ NO SOURCE CHANGES WERE MADE
 
 Other formats: `--format check` (the GitHub Check surface) and `--format json`.
 
+### 5. Prove an agent is ready — `agents` and `commission`
+
+The agent is a replaceable life-force adapter: a repair provider is *commissioned*
+against a disposable fixture and graded independently — **without any repository
+write**.
+
+```console
+$ frankenstein agents
+Coding agents:
+  ✓ local (available) [plan, patch, repository_edit, sandbox_exec]
+  ◦ codex (unavailable) [...] — No credentials found (set OPENAI_ACCESS_TOKEN); connect the codex provider first.
+
+$ frankenstein commission
+Commissioning — local
+Readiness: READY
+Objective: arithmetic (at risk → alive)
+Cost: $0.00  Latency: 0.001s  Tools: repository_edit, patch  Network: none
+A connected profile is proven ready. NO REPOSITORY WRITES WERE REQUIRED.
+```
+
+The agent proposes a **patch as data**; the harness applies it to a separate,
+clean copy and grades it with Frankenstein's own evaluators. A patch that reaches
+for a protected or verifier path is refused — the anti-gaming rule, enforced.
+
+### Resolved autonomy — `permissions`
+
+```console
+$ frankenstein permissions
+Permissions — codenamev/widget (autonomy: observe=automatic diagnose=automatic repair=disabled …)
+  Patch dependency update: max=diagnose | observe=auto diagnose=auto repair=off submit=off merge=off …
+  CI or verifier modification: max=diagnose | … [elevated review]
+```
+
+Task-class defaults (section 11) are intersected with the repository's *enabled*
+autonomy and the safety floor: with repair/submit opt-in and off, everything
+clamps to diagnose; merge is always off in v1.
+
 ### The portfolio baseline (Appendix A)
 
 ```console
@@ -187,11 +224,13 @@ Two rules are **enforced**, not just documented:
 | 07 Configuration & precedence | ✅ `EffectivePolicyResolver`, `SafetyFloor` |
 | 09 Acceptance criteria & verifier isolation | ✅ `AcceptanceCriterion`, `Evaluators` |
 | 14–15 Baseline & proof-of-life | ✅ `BaselineRunner`, `ProofOfLife`, `Reports` |
-| 18 MVP slices 1–2 | ✅ Inventory→intent, discovery→baseline |
-| 08 Agent connections / commissioning | ⏳ Designed for; not in this slice |
+| 08 Agent connections, commissioning, routing | ✅ `Agents::*`, `Commissioning`, `Routing::Router` |
+| 11 Autonomy ladder & permission model | ✅ `AutonomyLevel`, `TaskClass`, `PermissionModel` |
+| 18 MVP slices 1–3 | ✅ Inventory→intent, discovery→baseline, agent commissioning |
 | 10 Repository families | ⏳ Detected as relationships; gates deferred |
-| 11–13 Autonomy, security controls, upgrades | ⏳ Modeled; enforcement expands with agents |
-| GitHub App, web UI, draft-PR repair | ⏳ Explicitly later (spec sections 03, 18) |
+| 12–13 Security controls, upgrades | ⏳ Modeled; enforcement expands with repair |
+| 18 slice 4 Bounded draft-PR repair | ⏳ Next: the pieces (patch, isolation, permissions) are in place |
+| GitHub App, web UI | ⏳ Explicitly later (spec sections 03, 18) |
 
 See [`.architecture/decisions`](.architecture/decisions) for the reasoning
 behind key choices.
