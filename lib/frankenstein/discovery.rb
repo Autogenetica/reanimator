@@ -33,8 +33,12 @@ module Frankenstein
         klass.new(repository).call
       rescue => e
         # A misbehaving detector must never sink the whole observation; record
-        # the failure and keep going. Robustness over completeness here.
-        Frankenstein.logger.warn("#{klass} failed on #{repository.name}: #{e.message}")
+        # the failure and keep going. Robustness over completeness here - but the
+        # failure is logged with its class and origin so a swallowed bug stays
+        # diagnosable rather than silently dropping facts.
+        Frankenstein.logger.warn(
+          "#{klass} failed on #{repository.name}: #{e.class}: #{e.message} (at #{e.backtrace&.first})"
+        )
         []
       end
 

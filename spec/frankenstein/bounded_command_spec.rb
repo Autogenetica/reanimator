@@ -13,6 +13,13 @@ RSpec.describe Frankenstein::BoundedCommand do
     expect(result).not_to be_timed_out
   end
 
+  it "caps captured output so a flood cannot exhaust memory" do
+    result = described_class.run("yes | head -c 3000000", chdir: Dir.pwd, timeout: 20)
+    expect(result).to be_success
+    expect(result.output.bytesize).to be <= (1 << 20) + 64
+    expect(result.output).to include("truncated")
+  end
+
   it "bounds a hanging command and does not wait for it" do
     result = described_class.run("sleep 30", chdir: Dir.pwd, timeout: 1)
     expect(result).to be_timed_out

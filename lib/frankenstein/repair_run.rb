@@ -23,7 +23,7 @@ module Frankenstein
     # @return [Run]
     def run
       pre = BaselineRunner.new(@contract, execute: true).run
-      target = pre.results.find { |r| r.required? && r.failed? }&.criterion
+      target = pre.first_failing_required_criterion
       return record(:no_op, pre: pre, reason: "All required criteria pass; no repair is needed.") unless target
 
       resolution = PermissionModel.new(@contract).resolve(@task_class)
@@ -90,11 +90,11 @@ module Frankenstein
     end
 
     def resolved?(target, pre, post)
-      fixed = post.results.find { |r| r.criterion.id == target.id }&.verified?
-      return false unless fixed
+      return false unless post.result_for(target.id)&.verified?
 
-      proven = pre.results.select { |r| r.required? && r.verified? }.map { |r| r.criterion.id }
-      post.results.none? { |r| proven.include?(r.criterion.id) && !r.verified? }
+      # No criterion that was verified-required before may be unproven after.
+      regressed = pre.verified_required_ids & post.unproven_required.map { |r| r.criterion.id }
+      regressed.empty?
     end
 
     # Readiness is *proven*, not assumed: the provider is commissioned against a

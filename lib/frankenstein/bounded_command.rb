@@ -15,6 +15,12 @@ module Frankenstein
   # *entire group* is signalled - not just the `sh` parent - so a spawned
   # grandchild (the actual test or build process) cannot outlive the bound.
   module BoundedCommand
+    # Cap on captured output so a runaway producer cannot exhaust memory before
+    # the time bound fires. The pipe is still drained past the cap so the child
+    # never blocks on a full pipe; only accumulation stops.
+    MAX_OUTPUT_BYTES = 1 << 20 # 1 MiB
+    READ_CHUNK = 16_384
+
     Result = Struct.new(:success, :output, :duration, :timed_out) do
       def success? = success
       def timed_out? = timed_out
@@ -30,11 +36,21 @@ module Frankenstein
       started = clock
       stdin, out_and_err, wait_thread = Open3.popen2e("sh", "-c", command, chdir: chdir, pgroup: true)
       stdin.close
+      out_and_err.binmode
 
-      output = +""
+      output = +"".b
+      truncated = false
       timed_out = false
       begin
-        Timeout.timeout(timeout) { output << out_and_err.read }
+        Timeout.timeout(timeout) do
+          while (chunk = out_and_err.read(READ_CHUNK))
+            if output.bytesize < MAX_OUTPUT_BYTES
+              output << chunk
+            else
+              truncated = true # keep draining, stop accumulating
+            end
+          end
+        end
         wait_thread.join
       rescue Timeout::Error
         timed_out = true
@@ -44,9 +60,13 @@ module Frankenstein
         out_and_err.close
       end
 
+      output << "\n...[output truncated]" if truncated
+
       Result.new(
         success: !timed_out && wait_thread.value&.success?,
-        output: output,
+        # Command output is untrusted bytes; present it as scrubbed UTF-8 so
+        # callers' string operations never raise.
+        output: output.force_encoding("UTF-8").scrub,
         duration: (clock - started).round(2),
         timed_out: timed_out
       )

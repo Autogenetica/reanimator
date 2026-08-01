@@ -66,3 +66,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   command (a criterion-id/fact-key mismatch previously dropped it).
 - Bounded repair proves agent readiness by commissioning before routing, rather
   than assuming readiness from mere availability.
+- Robust to non-UTF-8 input: repository files and command output are read as
+  scrubbed UTF-8, so a stray byte (or a C/US-ASCII locale) no longer makes a
+  detector raise, get swallowed, and silently drop facts.
+- `BoundedCommand` caps captured output (1 MiB) so a runaway command cannot
+  exhaust memory, while still draining the pipe so the child never blocks.
+- Swallowed detector failures now log their exception class and origin, so a
+  hidden bug stays diagnosable instead of silently dropping facts.
+- `Baseline` answers `failing_required`, `unproven_required`,
+  `first_failing_required_criterion`, `result_for`, and `verified_required_ids`,
+  removing duplicated result-digging from the repair flow and reporters.
