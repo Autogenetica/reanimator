@@ -9,7 +9,7 @@ module Frankenstein
   # always off in v1.
   class PermissionModel
     # The resolved decision for one task against one contract.
-    Resolution = Struct.new(:task_class, :actions, :elevated_review, :max_action, keyword_init: true) do
+    Resolution = Struct.new(:task_class, :actions, :elevated_review, :max_action) do
       def elevated_review? = elevated_review
 
       def permits?(level) = actions.fetch(level.to_sym, :off) != :off

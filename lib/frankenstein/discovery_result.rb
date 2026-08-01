@@ -6,7 +6,7 @@ module Frankenstein
   # ("here is what we found, and why") and what the resolver consumes.
   class DiscoveryResult
     # The suggested profile with the reasoning behind it.
-    Suggestion = Struct.new(:profile, :confidence, :reason, keyword_init: true)
+    Suggestion = Struct.new(:profile, :confidence, :reason)
 
     attr_reader :repository, :facts
 

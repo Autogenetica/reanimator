@@ -8,3 +8,7 @@
 /tmp/
 *.gem
 .DS_Store
+
+# A gem does not commit its lockfile: each supported Ruby resolves its own
+# compatible dependency set, which keeps CI honest across the version matrix.
+/Gemfile.lock

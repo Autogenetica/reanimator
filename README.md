@@ -30,7 +30,7 @@ $ bundle install
 $ gem install frankenstein
 ```
 
-Requires Ruby >= 3.1.
+Requires Ruby >= 3.3.
 
 ## The onboarding path, on the command line
 

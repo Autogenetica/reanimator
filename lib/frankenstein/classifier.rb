@@ -15,7 +15,7 @@ module Frankenstein
 
     # The result of classification: the cohort, the intent it suggests, how
     # confident that suggestion is, and why.
-    Classification = Struct.new(:cohort, :suggested_intent, :confidence, :reason, keyword_init: true) do
+    Classification = Struct.new(:cohort, :suggested_intent, :confidence, :reason) do
       def recommended_for_onboarding? = cohort.recommended_for_onboarding?
     end
 

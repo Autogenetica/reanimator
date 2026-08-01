@@ -12,7 +12,7 @@ module Frankenstein
     # and where to apply it.
     class Patch
       # A single file's new contents (or deletion).
-      Edit = Struct.new(:path, :contents, :delete, keyword_init: true) do
+      Edit = Struct.new(:path, :contents, :delete) do
         def delete? = delete
       end
 

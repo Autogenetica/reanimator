@@ -11,7 +11,7 @@ module Frankenstein
   # directory through `sh -c` so discovered commands with globs (for example
   # `gem build *.gemspec`) behave as they do in CI.
   module BoundedCommand
-    Result = Struct.new(:success, :output, :duration, :timed_out, keyword_init: true) do
+    Result = Struct.new(:success, :output, :duration, :timed_out) do
       def success? = success
       def timed_out? = timed_out
     end
