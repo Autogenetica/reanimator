@@ -119,6 +119,19 @@ module Frankenstein
     Commissioning::Test.new(Agents.for(connection)).run
   end
 
+  # Attempt one bounded repair for a repository's first failing required
+  # criterion. Read-only with respect to the repository: the result is a
+  # recorded {Run} whose most eventful outcome is a *proposed* draft PR, never a
+  # write or submission.
+  #
+  # @param path [String] repository root on disk
+  # @param provider [Symbol] agent provider (:local by default)
+  # @param task_class [Symbol] the task class governing autonomy (section 11)
+  # @return [Run]
+  def self.repair(path, provider: :local, task_class: :patch_dependency)
+    RepairRun.new(contract(path), provider: provider, task_class: task_class).run
+  end
+
   # Adapters for every built-in provider, with default connections - the roster
   # the CLI lists with availability.
   # @return [Array<Agents::Adapter>]

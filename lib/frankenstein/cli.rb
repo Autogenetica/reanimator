@@ -104,6 +104,24 @@ module Frankenstein
       end
     end
 
+    desc "repair [PATH]", "Attempt a bounded repair and propose a draft PR (no repository writes)"
+    long_desc <<~DESC
+      Stage toward bounded stewardship (section 11 repair rung). Finds the first
+      failing required criterion, checks the permission model, routes to a ready
+      agent, and lets it propose a patch in an isolated workspace. The patch is
+      applied only to a separate clean copy and re-verified independently; on
+      success a draft PR is materialized but NOT submitted. Nothing is written to
+      the repository.
+    DESC
+    option :provider, default: "local", desc: "Provider to use (local, codex, claude, amp)"
+    option :task_class, default: "patch_dependency", desc: "Task class governing autonomy"
+    def repair(path = Dir.pwd)
+      guard do
+        run = Frankenstein.repair(path, provider: options[:provider].to_sym, task_class: options[:task_class].to_sym)
+        puts Reports::Run.new(run).render
+      end
+    end
+
     desc "permissions [PATH]", "Show resolved autonomy per task class for a repository"
     option :intent, desc: "Override the inferred lifecycle intent"
     def permissions(path = Dir.pwd)

@@ -145,6 +145,33 @@ The agent proposes a **patch as data**; the harness applies it to a separate,
 clean copy and grades it with Frankenstein's own evaluators. A patch that reaches
 for a protected or verifier path is refused — the anti-gaming rule, enforced.
 
+### 6. Bounded repair — `repair`
+
+A repair is found, applied in an isolated workspace, and **re-verified
+independently** before anything is proposed. The result is a *draft PR
+artifact* — never a write, never a submission.
+
+```console
+$ frankenstein repair            # on a healthy repo
+Outcome:  NO-OP (healthy)
+
+$ frankenstein repair            # repair not yet enabled in the contract
+Outcome:  ESCALATION
+Reason:   Repair is not enabled for patch_dependency (max autonomy diagnose); enable repair to proceed.
+
+$ frankenstein repair            # repair enabled, a fixable failure present
+Outcome:  DRAFT PR (proposed, not submitted)
+Evidence: at_risk → alive
+Proposed draft PR:
+  branch: frankenstein/repair-arithmetic-901cec8a
+  title:  Fix: add(2, 2) equals 4.
+NO SOURCE WAS WRITTEN TO THE REPOSITORY.
+```
+
+Every outcome is recorded as an immutable run-ledger entry (`no_op`, `report`,
+`draft_pr`, `escalation`, `safe_stop`). Submitting a proposed change to GitHub is
+a deliberate, separate step — not something repair does on its own.
+
 ### Resolved autonomy — `permissions`
 
 ```console
@@ -226,10 +253,11 @@ Two rules are **enforced**, not just documented:
 | 14–15 Baseline & proof-of-life | ✅ `BaselineRunner`, `ProofOfLife`, `Reports` |
 | 08 Agent connections, commissioning, routing | ✅ `Agents::*`, `Commissioning`, `Routing::Router` |
 | 11 Autonomy ladder & permission model | ✅ `AutonomyLevel`, `TaskClass`, `PermissionModel` |
-| 18 MVP slices 1–3 | ✅ Inventory→intent, discovery→baseline, agent commissioning |
+| 13 / 17 Bounded repair & run ledger | ✅ `RepairRun`, `Obligation`, `ProposedChange`, `Run` (no writes) |
+| 18 MVP slices 1–4 | ✅ Inventory→baseline→commissioning→bounded repair |
 | 10 Repository families | ⏳ Detected as relationships; gates deferred |
-| 12–13 Security controls, upgrades | ⏳ Modeled; enforcement expands with repair |
-| 18 slice 4 Bounded draft-PR repair | ⏳ Next: the pieces (patch, isolation, permissions) are in place |
+| 12 Security controls | ⏳ Modeled; enforcement expands with submission |
+| Draft-PR *submission* to GitHub | ⏳ Deliberate opt-in; artifact is ready, the write is not wired |
 | GitHub App, web UI | ⏳ Explicitly later (spec sections 03, 18) |
 
 See [`.architecture/decisions`](.architecture/decisions) for the reasoning

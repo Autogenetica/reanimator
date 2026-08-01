@@ -43,3 +43,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `TaskClass` defaults, and `PermissionModel` that intersects task-class
   defaults with the repository's enabled autonomy and the safety floor.
 - CLI additions: `frankenstein agents|commission|permissions`.
+- Bounded repair (sections 11, 13, 17): `RepairRun` orchestrates baseline →
+  obligation → permission check → routing → isolated agent repair → independent
+  re-verification → a materialized `ProposedChange` (draft PR), recorded as an
+  immutable `Run` in the ledger. It writes nothing to the repository - a
+  proposed draft PR is an artifact, and submission is a separate, opt-in step.
+- `Obligation` (idempotent, deduplicated), `ProposedChange`, `Run` (section 17
+  ledger), and an `Isolation` disposable-workspace helper.
+- CLI addition: `frankenstein repair`.
