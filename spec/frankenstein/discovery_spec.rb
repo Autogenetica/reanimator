@@ -76,4 +76,14 @@ RSpec.describe Frankenstein::Discovery do
     expect { discover }.not_to raise_error
     expect(discover.facts).to eq([])
   end
+
+  it "survives non-UTF-8 files and still detects the ecosystem" do
+    path = make_repo(files: {"widget.gemspec" => "x"})
+    # A Gemfile with an invalid byte would otherwise make the detector's regex
+    # raise, get swallowed, and silently drop the Bundler fact.
+    File.binwrite(File.join(path, "Gemfile"), "ruby \xE2 '3.3.0'\nsource 'x'\n")
+
+    result = Frankenstein::Discovery.new(Frankenstein::Repository.at(path)).run
+    expect(result.fact?(:bundler)).to be(true)
+  end
 end

@@ -38,7 +38,7 @@ module Frankenstein
       end
 
       def unproven_or_failed
-        @baseline.results.count { |r| r.required? && !r.verified? }
+        @baseline.unproven_required.size
       end
     end
   end

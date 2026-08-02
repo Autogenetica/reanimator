@@ -98,7 +98,7 @@ module Frankenstein
         run: run, target: criterion.target, required: criterion.required,
         scope: criterion.scope, freshness: criterion.freshness, owner: criterion.owner,
         risk_class: criterion.risk_class,
-        provenance: discovery[:"#{criterion.id}_command"]&.provenance
+        provenance: discovery.command_fact(criterion.id)&.provenance
       )
     end
 

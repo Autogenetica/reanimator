@@ -8,7 +8,7 @@ module Frankenstein
   # small, high-confidence group of active originals (section 04 default).
   class Portfolio
     # One repository plus how intake classified it.
-    Entry = Struct.new(:repository, :classification, keyword_init: true) do
+    Entry = Struct.new(:repository, :classification) do
       def name = repository.name
 
       def cohort = classification.cohort

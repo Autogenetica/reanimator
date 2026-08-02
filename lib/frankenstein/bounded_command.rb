@@ -7,11 +7,21 @@ module Frankenstein
   # Runs a single shell command under a hard wall-clock bound and captures its
   # combined output (specification section 12: bounded attempts, time, and
   # paths). Baselines are bounded by construction - a check that hangs is a
-  # failed check, never an unbounded wait. The command runs in the repository
-  # directory through `sh -c` so discovered commands with globs (for example
-  # `gem build *.gemspec`) behave as they do in CI.
+  # failed check, never an unbounded wait. The command runs through `sh -c` so
+  # discovered commands with globs (for example `gem build *.gemspec`) behave as
+  # they do in CI.
+  #
+  # The child is started as its own process-group leader and, on timeout, the
+  # *entire group* is signalled - not just the `sh` parent - so a spawned
+  # grandchild (the actual test or build process) cannot outlive the bound.
   module BoundedCommand
-    Result = Struct.new(:success, :output, :duration, :timed_out, keyword_init: true) do
+    # Cap on captured output so a runaway producer cannot exhaust memory before
+    # the time bound fires. The pipe is still drained past the cap so the child
+    # never blocks on a full pipe; only accumulation stops.
+    MAX_OUTPUT_BYTES = 1 << 20 # 1 MiB
+    READ_CHUNK = 16_384
+
+    Result = Struct.new(:success, :output, :duration, :timed_out) do
       def success? = success
       def timed_out? = timed_out
     end
@@ -24,32 +34,49 @@ module Frankenstein
     # @return [Result]
     def run(command, chdir:, timeout:)
       started = clock
-      stdin, out_and_err, wait_thread = Open3.popen2e("sh", "-c", command, chdir: chdir)
+      stdin, out_and_err, wait_thread = Open3.popen2e("sh", "-c", command, chdir: chdir, pgroup: true)
       stdin.close
+      out_and_err.binmode
 
-      output = +""
+      output = +"".b
+      truncated = false
       timed_out = false
       begin
-        Timeout.timeout(timeout) { output << out_and_err.read }
+        Timeout.timeout(timeout) do
+          while (chunk = out_and_err.read(READ_CHUNK))
+            if output.bytesize < MAX_OUTPUT_BYTES
+              output << chunk
+            else
+              truncated = true # keep draining, stop accumulating
+            end
+          end
+        end
         wait_thread.join
       rescue Timeout::Error
         timed_out = true
-        kill(wait_thread.pid)
+        kill_group(wait_thread.pid)
+        wait_thread.join # reap the terminated leader
       ensure
         out_and_err.close
       end
 
+      output << "\n...[output truncated]" if truncated
+
       Result.new(
         success: !timed_out && wait_thread.value&.success?,
-        output: output,
+        # Command output is untrusted bytes; present it as scrubbed UTF-8 so
+        # callers' string operations never raise.
+        output: output.force_encoding("UTF-8").scrub,
         duration: (clock - started).round(2),
         timed_out: timed_out
       )
     end
 
-    def kill(pid)
-      Process.kill("TERM", pid)
-      Process.kill("KILL", pid)
+    # Signals the whole process group led by pid (the negative-pid form), so
+    # every process the command spawned is terminated together.
+    def kill_group(pid)
+      Process.kill("TERM", -pid)
+      Process.kill("KILL", -pid)
     rescue Errno::ESRCH, Errno::EPERM
       # Already gone; nothing to clean up.
     end

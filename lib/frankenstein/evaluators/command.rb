@@ -14,7 +14,7 @@ module Frankenstein
           return result(:planned, detail: "Would run: #{criterion.run}")
         end
 
-        outcome = BoundedCommand.run(criterion.run, chdir: repository.path, timeout: timeout)
+        outcome = BoundedCommand.run(criterion.run, chdir: execution_root, timeout: timeout)
         grade(outcome)
       end
 

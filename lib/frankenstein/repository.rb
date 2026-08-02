@@ -71,9 +71,15 @@ module Frankenstein
     # @return [Boolean] whether any path matches the glob
     def any?(pattern) = !glob(pattern).empty?
 
-    # @return [String, nil] contents of a repository-relative file, or nil
+    # @return [String, nil] contents of a repository-relative file, or nil.
+    #   Repository content is untrusted and may not be valid UTF-8; it is read
+    #   as UTF-8 and scrubbed so a detector's regex or slice can never raise on
+    #   a stray byte (which would otherwise be swallowed as a "detector failed"
+    #   and silently drop facts), including under a C/US-ASCII locale.
     def read(relative)
-      File.read(absolute(relative)) if exist?(relative)
+      return unless exist?(relative)
+
+      File.read(absolute(relative), encoding: "UTF-8").scrub
     end
 
     def to_h

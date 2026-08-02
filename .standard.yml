@@ -1,5 +1,5 @@
 # frozen_string_literal: true
-ruby_version: 3.1
+ruby_version: 3.3
 format: progress
 
 ignore:

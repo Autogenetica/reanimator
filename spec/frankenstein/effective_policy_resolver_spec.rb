@@ -40,6 +40,15 @@ RSpec.describe Frankenstein::EffectivePolicyResolver do
     expect(tests.run).to eq("bundle exec rspec")
   end
 
+  it "carries provenance from the discovered command onto the tests criterion" do
+    contract = resolve(files: {
+      "Gemfile" => "gemspec\n", "widget.gemspec" => "x", ".rspec" => "--color\n"
+    })
+    tests = contract.criteria.find { |c| c.id == :tests }
+    expect(tests.provenance).not_to be_nil
+    expect(tests.provenance.source).to eq(".rspec")
+  end
+
   describe "the non-bypassable safety floor" do
     it "clamps a contract that tries to enable merge, and records the clamp" do
       contract = resolve(files: {

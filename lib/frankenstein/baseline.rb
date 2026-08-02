@@ -35,6 +35,33 @@ module Frankenstein
       results.select { |r| r.status == status.to_sym }
     end
 
+    # Required criteria that failed - the actionable, blocking ones.
+    def failing_required
+      results.select { |r| r.required? && r.failed? }
+    end
+
+    # Required criteria not yet proven (failed, missing, planned, or skipped).
+    def unproven_required
+      results.select { |r| r.required? && !r.verified? }
+    end
+
+    # The first required criterion that failed, or nil - the natural repair
+    # target. Callers ask the baseline rather than digging through #results.
+    def first_failing_required_criterion
+      failing_required.first&.criterion
+    end
+
+    # The result for a criterion id, or nil.
+    def result_for(criterion_id)
+      results.find { |r| r.criterion.id == criterion_id }
+    end
+
+    # Ids of required criteria that are verified - the set a later run must not
+    # regress from.
+    def verified_required_ids
+      results.select { |r| r.required? && r.verified? }.map { |r| r.criterion.id }
+    end
+
     # Verified Vitality Rate for active (required) obligations - the headline
     # dashboard metric from section 15, kept separate from accepted risk.
     # @return [Float] 0.0..1.0

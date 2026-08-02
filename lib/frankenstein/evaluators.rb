@@ -18,10 +18,12 @@ module Frankenstein
     # @param contract [EffectiveContract]
     # @param execute [Boolean]
     # @param timeout [Integer]
+    # @param execution_root [String] directory commands run in - a disposable
+    #   copy when executing, so the original working tree is never touched
     # @return [Evaluators::Base]
-    def for(criterion, contract:, execute:, timeout:)
+    def for(criterion, contract:, execute:, timeout:, execution_root: contract.repository.path)
       klass = registry.fetch(criterion.evaluator, Unsupported)
-      klass.new(criterion, contract: contract, execute: execute, timeout: timeout)
+      klass.new(criterion, contract: contract, execute: execute, timeout: timeout, execution_root: execution_root)
     end
 
     def registry

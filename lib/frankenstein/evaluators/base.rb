@@ -7,13 +7,14 @@ module Frankenstein
     # through the read-only effective contract - it never receives, and cannot
     # reach, a mutable agent workspace.
     class Base
-      attr_reader :criterion, :contract, :execute, :timeout
+      attr_reader :criterion, :contract, :execute, :timeout, :execution_root
 
-      def initialize(criterion, contract:, execute:, timeout:)
+      def initialize(criterion, contract:, execute:, timeout:, execution_root: nil)
         @criterion = criterion
         @contract = contract
         @execute = execute
         @timeout = timeout
+        @execution_root = execution_root || contract.repository.path
       end
 
       # @return [CriterionResult]

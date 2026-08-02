@@ -56,8 +56,7 @@ module Frankenstein
       def gaps(baseline)
         return [] if baseline.state.alive?
 
-        baseline.results
-          .select { |r| r.required? && !r.verified? }
+        baseline.unproven_required
           .map { |r| r.detail || "#{r.criterion.id} #{Reports.status_label(r.status)}" }
       end
 

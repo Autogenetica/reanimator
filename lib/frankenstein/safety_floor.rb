@@ -31,6 +31,28 @@ module Frankenstein
       (PROTECTED_PATHS + Array(declared)).uniq
     end
 
+    # Matches a repository-relative path against a glob, treating a trailing
+    # `**` as "this directory and everything under it, at any depth". Plain
+    # `File.fnmatch?` with FNM_PATHNAME does not let `**` cross `/`, which would
+    # leave `.github/workflows/nested/deploy.yml` unprotected - so the recursive
+    # form is expanded and tried as well.
+    #
+    # @param glob [String]
+    # @param path [String]
+    # @return [Boolean]
+    def matches?(glob, path)
+      flags = File::FNM_PATHNAME | File::FNM_EXTGLOB
+      return true if File.fnmatch?(glob, path, flags)
+
+      recursive = glob.sub(%r{/\*\*\z}, "/**/*")
+      recursive != glob && File.fnmatch?(recursive, path, flags)
+    end
+
+    # Whether any of the given globs protects the path.
+    def protects?(path, globs)
+      globs.any? { |glob| matches?(glob, path) }
+    end
+
     # Clamps an autonomy map so it can never exceed the floor. Returns the
     # clamped map plus a list of human-readable notes describing what was
     # tightened, so the resolver can surface the clamp rather than hide it.

@@ -30,7 +30,7 @@ $ bundle install
 $ gem install frankenstein
 ```
 
-Requires Ruby >= 3.1.
+Requires Ruby >= 3.3.
 
 ## The onboarding path, on the command line
 
@@ -121,6 +121,70 @@ NO SOURCE CHANGES WERE MADE
 
 Other formats: `--format check` (the GitHub Check surface) and `--format json`.
 
+### 5. Prove an agent is ready — `agents` and `commission`
+
+The agent is a replaceable life-force adapter: a repair provider is *commissioned*
+against a disposable fixture and graded independently — **without any repository
+write**.
+
+```console
+$ frankenstein agents
+Coding agents:
+  ✓ local (available) [plan, patch, repository_edit, sandbox_exec]
+  ◦ codex (unavailable) [...] — No credentials found (set OPENAI_ACCESS_TOKEN); connect the codex provider first.
+
+$ frankenstein commission
+Commissioning — local
+Readiness: READY
+Objective: arithmetic (at risk → alive)
+Cost: $0.00  Latency: 0.001s  Tools: repository_edit, patch  Network: none
+A connected profile is proven ready. NO REPOSITORY WRITES WERE REQUIRED.
+```
+
+The agent proposes a **patch as data**; the harness applies it to a separate,
+clean copy and grades it with Frankenstein's own evaluators. A patch that reaches
+for a protected or verifier path is refused — the anti-gaming rule, enforced.
+
+### 6. Bounded repair — `repair`
+
+A repair is found, applied in an isolated workspace, and **re-verified
+independently** before anything is proposed. The result is a *draft PR
+artifact* — never a write, never a submission.
+
+```console
+$ frankenstein repair            # on a healthy repo
+Outcome:  NO-OP (healthy)
+
+$ frankenstein repair            # repair not yet enabled in the contract
+Outcome:  ESCALATION
+Reason:   Repair is not enabled for patch_dependency (max autonomy diagnose); enable repair to proceed.
+
+$ frankenstein repair            # repair enabled, a fixable failure present
+Outcome:  DRAFT PR (proposed, not submitted)
+Evidence: at_risk → alive
+Proposed draft PR:
+  branch: frankenstein/repair-arithmetic-901cec8a
+  title:  Fix: add(2, 2) equals 4.
+NO SOURCE WAS WRITTEN TO THE REPOSITORY.
+```
+
+Every outcome is recorded as an immutable run-ledger entry (`no_op`, `report`,
+`draft_pr`, `escalation`, `safe_stop`). Submitting a proposed change to GitHub is
+a deliberate, separate step — not something repair does on its own.
+
+### Resolved autonomy — `permissions`
+
+```console
+$ frankenstein permissions
+Permissions — codenamev/widget (autonomy: observe=automatic diagnose=automatic repair=disabled …)
+  Patch dependency update: max=diagnose | observe=auto diagnose=auto repair=off submit=off merge=off …
+  CI or verifier modification: max=diagnose | … [elevated review]
+```
+
+Task-class defaults (section 11) are intersected with the repository's *enabled*
+autonomy and the safety floor: with repair/submit opt-in and off, everything
+clamps to diagnose; merge is always off in v1.
+
 ### The portfolio baseline (Appendix A)
 
 ```console
@@ -187,11 +251,14 @@ Two rules are **enforced**, not just documented:
 | 07 Configuration & precedence | ✅ `EffectivePolicyResolver`, `SafetyFloor` |
 | 09 Acceptance criteria & verifier isolation | ✅ `AcceptanceCriterion`, `Evaluators` |
 | 14–15 Baseline & proof-of-life | ✅ `BaselineRunner`, `ProofOfLife`, `Reports` |
-| 18 MVP slices 1–2 | ✅ Inventory→intent, discovery→baseline |
-| 08 Agent connections / commissioning | ⏳ Designed for; not in this slice |
+| 08 Agent connections, commissioning, routing | ✅ `Agents::*`, `Commissioning`, `Routing::Router` |
+| 11 Autonomy ladder & permission model | ✅ `AutonomyLevel`, `TaskClass`, `PermissionModel` |
+| 13 / 17 Bounded repair & run ledger | ✅ `RepairRun`, `Obligation`, `ProposedChange`, `Run` (no writes) |
+| 18 MVP slices 1–4 | ✅ Inventory→baseline→commissioning→bounded repair |
 | 10 Repository families | ⏳ Detected as relationships; gates deferred |
-| 11–13 Autonomy, security controls, upgrades | ⏳ Modeled; enforcement expands with agents |
-| GitHub App, web UI, draft-PR repair | ⏳ Explicitly later (spec sections 03, 18) |
+| 12 Security controls | ⏳ Modeled; enforcement expands with submission |
+| Draft-PR *submission* to GitHub | ⏳ Deliberate opt-in; artifact is ready, the write is not wired |
+| GitHub App, web UI | ⏳ Explicitly later (spec sections 03, 18) |
 
 See [`.architecture/decisions`](.architecture/decisions) for the reasoning
 behind key choices.
