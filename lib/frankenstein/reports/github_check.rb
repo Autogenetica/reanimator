@@ -38,7 +38,7 @@ module Frankenstein
       end
 
       def unproven_or_failed
-        @baseline.unproven_required.size
+        @baseline.unresolved_required.size
       end
     end
   end

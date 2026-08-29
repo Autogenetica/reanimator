@@ -56,7 +56,7 @@ module Frankenstein
       def gaps(baseline)
         return [] if baseline.state.alive?
 
-        baseline.unproven_required
+        baseline.unresolved_required
           .map { |r| r.detail || "#{r.criterion.id} #{Reports.status_label(r.status)}" }
       end
 

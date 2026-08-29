@@ -10,12 +10,12 @@ module Frankenstein
   # itself back into a minimal, round-trippable .frankenstein.yml.
   class EffectiveContract
     attr_reader :repository, :intent, :profile, :criteria, :discovery,
-      :security_posture, :autonomy, :protected_paths, :notes,
+      :security_posture, :autonomy, :protected_paths, :waivers, :notes,
       :profile_source, :intent_confirmed
 
     def initialize(repository:, intent:, profile:, criteria:, discovery:,
       security_posture:, autonomy:, protected_paths:, profile_source:,
-      intent_confirmed:, notes: [])
+      intent_confirmed:, waivers: [], notes: [])
       @repository = repository
       @intent = intent
       @profile = profile
@@ -24,9 +24,16 @@ module Frankenstein
       @security_posture = security_posture
       @autonomy = autonomy
       @protected_paths = protected_paths
+      @waivers = waivers
       @profile_source = profile_source
       @intent_confirmed = intent_confirmed
       @notes = notes
+    end
+
+    # The active waiver accepting a criterion's risk, or nil. Expired waivers
+    # never apply (fail closed).
+    def waiver_for(criterion_id, now: Time.now)
+      waivers.find { |waiver| waiver.covers?(criterion_id) && waiver.active?(now: now) }
     end
 
     def intent_confirmed? = @intent_confirmed
@@ -93,7 +100,8 @@ module Frankenstein
         posture: security_posture.to_sym,
         autonomy: autonomy,
         protected: protected_paths.sort,
-        criteria: criteria.map { |c| [c.id, c.evaluator, c.run, c.required] }.sort_by(&:first)
+        criteria: criteria.map { |c| [c.id, c.evaluator, c.run, c.required] }.sort_by(&:first),
+        waivers: waivers.map { |w| [w.target, w.expires&.iso8601] }.sort_by(&:first)
       }
     end
   end

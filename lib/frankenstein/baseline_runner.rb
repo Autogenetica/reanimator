@@ -44,6 +44,7 @@ module Frankenstein
           timeout: timeout, execution_root: execution_root
         ).call
       end
+      results = apply_waivers(results)
 
       Baseline.new(
         contract: contract,
@@ -52,6 +53,29 @@ module Frankenstein
         generated_at: now,
         executed: execution_allowed?
       )
+    end
+
+    # Re-tags an unresolved required criterion as accepted risk when an active
+    # waiver covers it (section 09). The waiver does not make it verified - it
+    # records the failure as explicitly accepted, so it stops blocking the
+    # repository state while staying visible.
+    def apply_waivers(results)
+      results.map do |result|
+        next result unless result.required? && !result.verified? && !result.accepted_risk?
+
+        waiver = contract.waiver_for(result.criterion.id)
+        next result unless waiver
+
+        CriterionResult.new(
+          criterion: result.criterion, status: :accepted_risk,
+          detail: waiver_detail(waiver, result), evidence: result.evidence, duration: result.duration
+        )
+      end
+    end
+
+    def waiver_detail(waiver, result)
+      bound = waiver.expires ? " until #{waiver.expires.strftime("%Y-%m-%d")}" : ""
+      "Accepted risk#{bound}: #{waiver.reason} (was #{result.status})"
     end
 
     # Execution requires both the per-run request and the global allowance.

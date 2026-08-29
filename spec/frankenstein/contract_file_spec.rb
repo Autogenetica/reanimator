@@ -38,4 +38,19 @@ RSpec.describe Frankenstein::ContractFile do
     root = make_repo(files: {".frankenstein.yml" => "version: 1\nintent: [unterminated\n"})
     expect { described_class.load(root) }.to raise_error(Frankenstein::ContractError, /valid YAML/)
   end
+
+  it "parses waivers, including a bare date expiry" do
+    root = make_repo(files: {".frankenstein.yml" => <<~YAML})
+      version: 1
+      intent: maintain
+      waivers:
+        - target: boot
+          reason: "hardware unavailable on hosted runners"
+          expires: 2030-12-31
+    YAML
+    waiver = described_class.load(root).waivers.first
+    expect(waiver[:target]).to eq("boot")
+    expect(waiver[:reason]).to match(/hardware/)
+    expect(waiver[:expires]).to be_a(Date)
+  end
 end

@@ -8,6 +8,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Waivers (section 09): explicit, attributable, optionally time-bounded
+  exceptions declared in `.frankenstein.yml`. A waived required criterion is
+  recorded as **accepted risk** — not counted as verified, kept out of the
+  Verified Vitality Rate, and no longer blocking — while an expired waiver
+  fails closed. `Waiver`, `EffectiveContract#waiver_for`,
+  `Baseline#accepted_risks`/`#unresolved_required`, and accepted-risk reporting.
+
 - Canonical domain model: lifecycle intent, vitality profiles (Ruby-first),
   discovered facts with provenance and confidence, acceptance criteria, and the
   proof-of-life state vocabulary.

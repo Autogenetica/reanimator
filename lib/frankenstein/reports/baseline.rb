@@ -15,6 +15,7 @@ module Frankenstein
         [
           header,
           criteria_section,
+          accepted_risk_section,
           notes_section,
           "NO SOURCE CHANGES WERE MADE"
         ].compact.join("\n\n")
@@ -22,11 +23,25 @@ module Frankenstein
 
       private
 
+      def accepted_risk_section
+        risks = @baseline.accepted_risks
+        return if risks.empty?
+
+        lines = risks.map { |r| "  #{Reports.glyph(:accepted_risk)} #{r.criterion.id}: #{r.detail}" }
+        (["Accepted risk (waived) — counted as risk, not verified vitality:"] + lines).join("\n")
+      end
+
       def header
         contract = @baseline.contract
         intent = "#{contract.intent} (#{contract.intent_confirmed? ? "confirmed" : "provisional"})"
-        required = @baseline.results.select(&:required?)
+        # Accepted risk is excluded from the rate's denominator (kept separate),
+        # so the fraction and the percentage agree.
+        rated = @baseline.results.select { |r| r.required? && !r.accepted_risk? }
+        accepted = @baseline.accepted_risks.size
         rate = (@baseline.verified_vitality_rate * 100).round
+        vvr = "Verified Vitality Rate: #{rate}% (#{rated.count(&:verified?)}/#{rated.size} required"
+        vvr += ", #{accepted} accepted risk" if accepted.positive?
+        vvr += ")"
         [
           "Baseline — #{@baseline.repository.full_name}",
           "State:   #{@baseline.state.to_s.upcase.tr("_", " ")} — #{@baseline.state.meaning}",
@@ -34,7 +49,7 @@ module Frankenstein
           "Intent:  #{intent}",
           "Profile: #{contract.profile.id} (#{contract.profile_source})",
           "Contract: #{@baseline.policy_version}",
-          "Verified Vitality Rate: #{rate}% (#{required.count(&:verified?)}/#{required.size} required)"
+          vvr
         ].join("\n")
       end
 

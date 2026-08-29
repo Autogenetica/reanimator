@@ -92,8 +92,8 @@ module Frankenstein
     def resolved?(target, pre, post)
       return false unless post.result_for(target.id)&.verified?
 
-      # No criterion that was verified-required before may be unproven after.
-      regressed = pre.verified_required_ids & post.unproven_required.map { |r| r.criterion.id }
+      # No criterion that was verified-required before may be unresolved after.
+      regressed = pre.verified_required_ids & post.unresolved_required.map { |r| r.criterion.id }
       regressed.empty?
     end
 
