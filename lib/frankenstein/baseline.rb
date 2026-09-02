@@ -69,15 +69,21 @@ module Frankenstein
       results.select { |r| r.required? && r.verified? }.map { |r| r.criterion.id }
     end
 
+    # The required criteria the Verified Vitality Rate is measured over.
+    # Accepted risk is deliberately excluded so it is reported separately
+    # rather than counted as a failure (section 15).
+    def rated_required
+      results.select { |r| r.required? && !r.accepted_risk? }
+    end
+
     # Verified Vitality Rate for active (required) obligations - the headline
     # dashboard metric from section 15, kept separate from accepted risk.
     # @return [Float] 0.0..1.0
     def verified_vitality_rate
-      # Accepted risk is kept separate from the rate, not counted as a failure.
-      required = results.select { |r| r.required? && !r.accepted_risk? }
-      return 1.0 if required.empty?
+      rated = rated_required
+      return 1.0 if rated.empty?
 
-      required.count(&:verified?).to_f / required.size
+      rated.count(&:verified?).to_f / rated.size
     end
 
     # A repository is proven when it is Alive with no failed or unproven

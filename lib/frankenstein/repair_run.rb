@@ -111,10 +111,10 @@ module Frankenstein
     def build_task(target, workspace, pre)
       Agents::RepairTask.new(
         objective: target, workspace: workspace, evidence: pre,
-        constraints: {
+        constraints: Agents::Constraints.new(
           allowed_paths: EDITABLE, protected_paths: @contract.protected_paths,
           max_cost_usd: connection.max_cost_usd, code_egress: Agents.for(connection).code_egress
-        }
+        )
       )
     end
 

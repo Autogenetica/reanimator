@@ -34,9 +34,9 @@ module Frankenstein
       def header
         contract = @baseline.contract
         intent = "#{contract.intent} (#{contract.intent_confirmed? ? "confirmed" : "provisional"})"
-        # Accepted risk is excluded from the rate's denominator (kept separate),
-        # so the fraction and the percentage agree.
-        rated = @baseline.results.select { |r| r.required? && !r.accepted_risk? }
+        # The baseline owns which criteria the rate is measured over, so the
+        # fraction and the percentage cannot drift apart.
+        rated = @baseline.rated_required
         accepted = @baseline.accepted_risks.size
         rate = (@baseline.verified_vitality_rate * 100).round
         vvr = "Verified Vitality Rate: #{rate}% (#{rated.count(&:verified?)}/#{rated.size} required"

@@ -13,8 +13,8 @@ module Frankenstein
       attr_reader :objective
       # @return [String] absolute path to the agent's isolated workspace copy
       attr_reader :workspace
-      # @return [Hash] immutable constraints (allowed_paths, protected_paths,
-      #   max_cost_usd, code_egress)
+      # @return [Constraints] the immutable envelope this repair must stay
+      #   inside (allowed paths, protected paths, budget, code egress)
       attr_reader :constraints
       # @return [Baseline] the verified pre-repair evidence
       attr_reader :evidence
@@ -23,7 +23,7 @@ module Frankenstein
         @objective = objective
         @workspace = workspace
         @evidence = evidence
-        @constraints = constraints.freeze
+        @constraints = Constraints.from(constraints)
         freeze
       end
 
@@ -45,15 +45,7 @@ module Frankenstein
 
       # Whether a path is inside the constraints' allowed set (and outside the
       # protected set). Adapters should honor this; the harness enforces it.
-      # Matching is depth-correct via {SafetyFloor.matches?}, so a protected
-      # `dir/**` covers nested files and cannot be evaded by nesting.
-      def may_edit?(path)
-        protected_paths = Array(constraints[:protected_paths])
-        return false if SafetyFloor.protects?(path, protected_paths)
-
-        allowed = Array(constraints[:allowed_paths])
-        allowed.empty? || allowed.any? { |glob| SafetyFloor.matches?(glob, path) }
-      end
+      def may_edit?(path) = constraints.may_edit?(path)
     end
   end
 end
