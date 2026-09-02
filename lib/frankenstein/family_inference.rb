@@ -51,6 +51,7 @@ module Frankenstein
     def inferred_families(repositories, declared)
       claimed = declared.values.flat_map { |f| f.members.map(&:full_name) }
       by_name = repositories.each_with_object({}) { |r, index| index[r.name] = r }
+      by_full_name = repositories.each_with_object({}) { |r, index| index[r.full_name] = r }
 
       edges = repositories.filter_map do |repository|
         next if claimed.include?(repository.full_name)
@@ -64,7 +65,7 @@ module Frankenstein
         relationship
       end
 
-      build_families(edges, by_name)
+      build_families(edges, by_full_name)
     end
 
     # The edge this repository implies, or nil when nothing matches.
@@ -96,20 +97,16 @@ module Frankenstein
 
     # Groups edges by their upstream project into one family each, with a gate
     # per edge so every dependence has something that proves it.
-    def build_families(edges, by_name)
+    def build_families(edges, by_full_name)
       edges.group_by(&:to).each_with_object({}) do |(upstream_name, group), families|
-        upstream = by_name.values.find { |r| r.full_name == upstream_name }
-        id = upstream.name.to_sym
+        upstream = by_full_name.fetch(upstream_name)
 
-        members = [Family::Member.new(upstream_name, :library, upstream.path)]
-        gates = []
-        group.each do |relationship|
-          dependent = by_name.values.find { |r| r.full_name == relationship.from }
-          members << Family::Member.new(relationship.from, relationship.role, dependent&.path)
-          gates << Family::Gate.new(on: upstream_name, requires_repository: relationship.from)
-        end
+        members = [Family::Member.new(upstream_name, :library, upstream.path)] +
+          group.map { |edge| Family::Member.new(edge.from, edge.role, by_full_name[edge.from]&.path) }
+        gates = group.map { |edge| Family::Gate.new(on: upstream_name, requires_repository: edge.from) }
 
-        families[id] = Family.new(id: id, members: members, gates: gates, relationships: group)
+        families[upstream.name.to_sym] =
+          Family.new(id: upstream.name, members: members, gates: gates, relationships: group)
       end
     end
   end

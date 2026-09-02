@@ -6,10 +6,6 @@ module Frankenstein
     # family failure names the *edge* that broke, so every line leads with the
     # relationship rather than with whichever repository happened to run.
     class FamilyGates
-      GLYPHS = {
-        verified: "✓", failed: "✗", missing_evidence: "•", planned: "…", skipped: "◦"
-      }.freeze
-
       def initialize(family, results)
         @family = family
         @results = results
@@ -29,7 +25,7 @@ module Frankenstein
         @results.map do |result|
           detail = result.detail ? " — #{result.detail}" : ""
           timing = result.duration ? " (#{result.duration}s)" : ""
-          "  #{GLYPHS.fetch(result.status, "·")} #{result.edge}#{detail}#{timing}"
+          "  #{Reports.glyph(result.status)} #{result.edge}#{detail}#{timing}"
         end
       end
 
