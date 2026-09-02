@@ -172,6 +172,27 @@ Every outcome is recorded as an immutable run-ledger entry (`no_op`, `report`,
 `draft_pr`, `escalation`, `safe_stop`). Submitting a proposed change to GitHub is
 a deliberate, separate step — not something repair does on its own.
 
+### Accepted risk — waivers
+
+Sometimes a known failure is a deliberate, tracked decision, not a gap. A waiver
+records it as **accepted risk** — visible, attributable, and kept out of the
+vitality rate — without pretending it passed:
+
+```yaml
+# .frankenstein.yml
+version: 1
+intent: maintain
+profile: ruby-gem
+waivers:
+  - target: boot                       # the acceptance-criterion id
+    reason: "hardware-only smoke; tracked in OPS-7"
+    expires: 2030-01-01                # optional; past this it fails closed
+```
+
+The baseline then reports `boot` under "Accepted risk (waived)" instead of as a
+blocker, and the repository can be **Alive** with the risk shown separately. An
+expired waiver stops applying and the obligation is blocking again.
+
 ### Resolved autonomy — `permissions`
 
 ```console
@@ -249,7 +270,7 @@ Two rules are **enforced**, not just documented:
 | 04–05 Portfolio intake, lifecycle intent | ✅ `Portfolio`, `Classifier`, `Cohort` |
 | 06 Discovery by confirmation | ✅ `Detectors::*`, provenance, confidence |
 | 07 Configuration & precedence | ✅ `EffectivePolicyResolver`, `SafetyFloor` |
-| 09 Acceptance criteria & verifier isolation | ✅ `AcceptanceCriterion`, `Evaluators` |
+| 09 Acceptance criteria, verifier isolation & waivers | ✅ `AcceptanceCriterion`, `Evaluators`, `Waiver` (accepted risk) |
 | 14–15 Baseline & proof-of-life | ✅ `BaselineRunner`, `ProofOfLife`, `Reports` |
 | 08 Agent connections, commissioning, routing | ✅ `Agents::*`, `Commissioning`, `Routing::Router` |
 | 11 Autonomy ladder & permission model | ✅ `AutonomyLevel`, `TaskClass`, `PermissionModel` |

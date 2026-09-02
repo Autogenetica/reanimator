@@ -26,6 +26,10 @@ module Frankenstein
 
     def failed? = status == :failed
 
+    # A required criterion whose failure has been explicitly accepted via a
+    # waiver: not verified, but not blocking either.
+    def accepted_risk? = status == :accepted_risk
+
     # Whether this result contributes proof (a verified required criterion).
     def proven? = verified?
 

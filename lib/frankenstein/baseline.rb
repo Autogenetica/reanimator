@@ -40,9 +40,16 @@ module Frankenstein
       results.select { |r| r.required? && r.failed? }
     end
 
-    # Required criteria not yet proven (failed, missing, planned, or skipped).
-    def unproven_required
-      results.select { |r| r.required? && !r.verified? }
+    # Required criteria that are neither verified nor accepted risk - the ones
+    # that genuinely still need attention (failed, missing, planned, skipped).
+    def unresolved_required
+      results.select { |r| r.required? && !r.verified? && !r.accepted_risk? }
+    end
+
+    # Required criteria whose failure has been explicitly waived - accepted
+    # risk, kept separate from verified vitality (section 15).
+    def accepted_risks
+      results.select(&:accepted_risk?)
     end
 
     # The first required criterion that failed, or nil - the natural repair
@@ -66,7 +73,8 @@ module Frankenstein
     # dashboard metric from section 15, kept separate from accepted risk.
     # @return [Float] 0.0..1.0
     def verified_vitality_rate
-      required = results.select(&:required?)
+      # Accepted risk is kept separate from the rate, not counted as a failure.
+      required = results.select { |r| r.required? && !r.accepted_risk? }
       return 1.0 if required.empty?
 
       required.count(&:verified?).to_f / required.size

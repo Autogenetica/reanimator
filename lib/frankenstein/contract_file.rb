@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "yaml"
+require "date"
 
 module Frankenstein
   # Reads and writes the optional, repository-owned .frankenstein.yml
@@ -33,7 +34,9 @@ module Frankenstein
       full = File.join(root, filename)
       return nil unless File.file?(full)
 
-      raw = YAML.safe_load_file(full, permitted_classes: [], aliases: false) || {}
+      # Date/Time are permitted so a waiver's `expires:` can be a bare date
+      # literal; no other non-primitive classes are allowed to load.
+      raw = YAML.safe_load_file(full, permitted_classes: [Date, Time], aliases: false) || {}
       new(raw, source_path: full)
     rescue Psych::SyntaxError => e
       raise ContractError, "#{filename} is not valid YAML: #{e.message}"
@@ -74,6 +77,8 @@ module Frankenstein
     def upgrades = data[:upgrades] || {}
 
     def notifications = data[:notifications] || {}
+
+    def waivers = data[:waivers] || []
 
     def family = data[:family]
 

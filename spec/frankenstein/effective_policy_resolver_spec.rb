@@ -40,6 +40,24 @@ RSpec.describe Frankenstein::EffectivePolicyResolver do
     expect(tests.run).to eq("bundle exec rspec")
   end
 
+  it "carries active waivers and drops expired ones" do
+    contract = resolve(files: {".frankenstein.yml" => <<~YAML})
+      version: 1
+      intent: maintain
+      profile: generic
+      waivers:
+        - target: boot
+          reason: "accepted"
+          expires: 2999-01-01
+        - target: old
+          reason: "lapsed"
+          expires: 2000-01-01
+    YAML
+    expect(contract.waivers.size).to eq(2)
+    expect(contract.waiver_for(:boot)).not_to be_nil
+    expect(contract.waiver_for(:old)).to be_nil
+  end
+
   it "carries provenance from the discovered command onto the tests criterion" do
     contract = resolve(files: {
       "Gemfile" => "gemspec\n", "widget.gemspec" => "x", ".rspec" => "--color\n"

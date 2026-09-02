@@ -46,6 +46,7 @@ module Frankenstein
         security_posture: resolve_security_posture,
         autonomy: autonomy,
         protected_paths: SafetyFloor.protected_paths(declared_protected_paths),
+        waivers: build_waivers,
         notes: autonomy_notes
       )
     end
@@ -121,6 +122,19 @@ module Frankenstein
 
     def declared_protected_paths
       declared&.acceptance&.dig(:protected_paths) || []
+    end
+
+    # Owner-declared waivers become accepted-risk exceptions on the contract.
+    def build_waivers
+      (declared&.waivers || []).map do |waiver|
+        Waiver.new(
+          target: waiver[:target] || waiver[:id],
+          reason: waiver[:reason].to_s,
+          owner: waiver[:owner] || "repository",
+          scope: waiver[:scope] || {},
+          expires: waiver[:expires]
+        )
+      end
     end
 
     def resolve_autonomy
