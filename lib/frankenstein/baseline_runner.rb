@@ -61,21 +61,11 @@ module Frankenstein
     # repository state while staying visible.
     def apply_waivers(results)
       results.map do |result|
-        next result unless result.required? && !result.verified? && !result.accepted_risk?
+        next result unless result.waivable?
 
         waiver = contract.waiver_for(result.criterion.id)
-        next result unless waiver
-
-        CriterionResult.new(
-          criterion: result.criterion, status: :accepted_risk,
-          detail: waiver_detail(waiver, result), evidence: result.evidence, duration: result.duration
-        )
+        waiver ? result.accepted_via(waiver) : result
       end
-    end
-
-    def waiver_detail(waiver, result)
-      bound = waiver.expires ? " until #{waiver.expires.strftime("%Y-%m-%d")}" : ""
-      "Accepted risk#{bound}: #{waiver.reason} (was #{result.status})"
     end
 
     # Execution requires both the per-run request and the global allowance.

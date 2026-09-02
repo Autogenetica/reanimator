@@ -38,6 +38,22 @@ module Frankenstein
 
     def required? = criterion.required?
 
+    # Whether this result is eligible to be waived: a required obligation that
+    # is not proven and has not already been accepted.
+    def waivable? = required? && !verified? && !accepted_risk?
+
+    # A copy of this result recorded as accepted risk under the given waiver.
+    # The criterion is still not verified - its failure is explicitly accepted.
+    #
+    # @param waiver [Waiver]
+    # @return [CriterionResult]
+    def accepted_via(waiver)
+      CriterionResult.new(
+        criterion: criterion, status: :accepted_risk,
+        detail: waiver.acceptance_of(self), evidence: evidence, duration: duration
+      )
+    end
+
     def to_h
       {
         id: criterion.id,

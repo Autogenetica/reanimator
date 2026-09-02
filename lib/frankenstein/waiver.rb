@@ -36,6 +36,17 @@ module Frankenstein
     # @param criterion_id [Symbol, String]
     def covers?(criterion_id) = target == criterion_id.to_sym
 
+    # How this waiver reads on a result it accepts. The waiver owns its reason
+    # and bound, so it phrases its own acceptance rather than leaving callers
+    # to assemble the sentence.
+    #
+    # @param result [CriterionResult] the result being accepted
+    # @return [String]
+    def acceptance_of(result)
+      bound = expires ? " until #{expires.strftime("%Y-%m-%d")}" : ""
+      "Accepted risk#{bound}: #{reason} (was #{result.status})"
+    end
+
     # Whether the waiver still applies at the given time.
     def active?(now: Time.now) = expires.nil? || now < expires
 
