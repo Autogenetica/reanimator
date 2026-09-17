@@ -8,6 +8,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Configuration drift (section 06): `ContractSnapshot` records what a
+  repository was required to prove at a point in time, and `DriftDetector`
+  compares a later resolution against it. Every difference is classified by one
+  question — *is less being proven than before?* A narrowed runtime matrix, a
+  removed security gate, a dropped required obligation, a widened autonomy
+  grant or a fresh waiver are **policy changes** and ask for a human; a renamed
+  test command, an added check or a withdrawn waiver are **benign** and do not
+  interrupt anyone. The snapshot carries discovered evidence as well as the
+  declared file, so drift that never touches `.frankenstein.yml` is still seen.
+- CLI: `frankenstein drift [--since FILE] [--save FILE]`, exiting non-zero on a
+  policy change so CI can gate on it. The only file written is the one named
+  with `--save`.
+
 - Repository families (section 10): related repositories are treated as a
   compatibility graph rather than isolated targets. `Relationship` carries the
   seven typed edges, `Family` holds members/roles/gates (and parses the section

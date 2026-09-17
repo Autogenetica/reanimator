@@ -204,6 +204,40 @@ A repository can also declare its membership (`family: {id:, role:}`), and a ful
 section 10 family policy with explicit `members:` and `gates:` is parsed as-is.
 Declaration always wins over inference.
 
+### Configuration drift — `drift`
+
+A contract is only trustworthy while it still describes the repository. Drift
+detection compares what a repository resolved to when you recorded it against
+what its evidence resolves to now, and sorts every difference by one question:
+**is less being proven than before?**
+
+```console
+$ frankenstein drift --save .frankenstein-snapshot.json
+Recorded contract snapshot for codenamev/widget → .frankenstein-snapshot.json
+
+$ frankenstein drift --since .frankenstein-snapshot.json
+Configuration drift — codenamev/widget
+
+Policy changes (review required) — 2
+  ! supported runtime removed: 3.2
+    The runtime matrix narrowed: a version that used to be exercised no longer is.
+  ! security control removed: dependabot
+    A security gate was removed; it is no longer part of the proof.
+
+Benign changes — 1
+  · criterion tests command: bundle exec rspec → bin/rspec
+    The same obligation is proven by a differently spelled command.
+
+REVIEW REQUIRED: 2 policy changes — less is being proven than before.
+```
+
+A renamed test command is benign — the obligation did not move, only its
+spelling. A narrowed matrix or a removed gate is a policy change nobody
+necessarily decided on, so it is never buried in the benign list. The command
+exits non-zero on policy drift, so CI can gate on it, and the snapshot captures
+*discovered* evidence too — drift that never touches `.frankenstein.yml` is
+still caught.
+
 ### Accepted risk — waivers
 
 Sometimes a known failure is a deliberate, tracked decision, not a gap. A waiver
@@ -267,6 +301,8 @@ Frankenstein.inventory(paths)          #=> Frankenstein::Portfolio
 Frankenstein.discover(path)            #=> Frankenstein::DiscoveryResult
 Frankenstein.contract(path)            #=> Frankenstein::EffectiveContract
 Frankenstein.baseline(path, execute: true) #=> Frankenstein::Baseline
+Frankenstein.snapshot(path)            #=> Frankenstein::ContractSnapshot
+Frankenstein.drift(path, since: file)  #=> Frankenstein::DriftReport
 
 baseline = Frankenstein.baseline(".")
 baseline.state.to_sym                  #=> :unproven
@@ -300,7 +336,7 @@ Two rules are **enforced**, not just documented:
 | --- | --- |
 | 01–02 Model, goals, constraints | ✅ Implemented |
 | 04–05 Portfolio intake, lifecycle intent | ✅ `Portfolio`, `Classifier`, `Cohort` |
-| 06 Discovery by confirmation | ✅ `Detectors::*`, provenance, confidence |
+| 06 Discovery by confirmation & drift | ✅ `Detectors::*`, provenance, confidence, `DriftDetector` |
 | 07 Configuration & precedence | ✅ `EffectivePolicyResolver`, `SafetyFloor` |
 | 09 Acceptance criteria, verifier isolation & waivers | ✅ `AcceptanceCriterion`, `Evaluators`, `Waiver` (accepted risk) |
 | 14–15 Baseline & proof-of-life | ✅ `BaselineRunner`, `ProofOfLife`, `Reports` |

@@ -122,6 +122,35 @@ module Frankenstein
       end
     end
 
+    desc "drift [PATH]", "Record a contract snapshot, or detect drift against one"
+    long_desc <<~DESC
+      Section 06. Configuration drift is the difference between the contract a
+      repository resolved to when it was last recorded and the one its evidence
+      resolves to now. Differences are separated into policy changes - less is
+      being proven than before, so a human should look - and benign ones, such
+      as a renamed test command.
+
+      With --since, compares against a recorded snapshot and exits non-zero when
+      a policy change is found, so CI can gate on it. With --save, records the
+      current snapshot to that file. With neither, prints the snapshot as JSON.
+      The only file Frankenstein ever writes is the one you name with --save.
+    DESC
+    option :since, desc: "Path to a recorded snapshot to compare against"
+    option :save, desc: "Path to write the current snapshot to"
+    option :intent, desc: "Override the inferred lifecycle intent"
+    option :format, default: "text", enum: %w[text json], desc: "Output format"
+    def drift(path = Dir.pwd)
+      guard do
+        intent_override = options[:intent]&.to_sym
+        report = options[:since] && Frankenstein.drift(path, since: options[:since], intent: intent_override)
+        snapshot = report&.current || Frankenstein.snapshot(path, intent: intent_override)
+
+        puts render_drift(report, snapshot, options[:format]) if report || !options[:save]
+        save_snapshot(snapshot, options[:save]) if options[:save]
+        exit 1 if report&.requires_review?
+      end
+    end
+
     desc "permissions [PATH]", "Show resolved autonomy per task class for a repository"
     option :intent, desc: "Override the inferred lifecycle intent"
     def permissions(path = Dir.pwd)
@@ -167,6 +196,21 @@ module Frankenstein
     end
 
     private
+
+    def render_drift(report, snapshot, format)
+      return JSON.pretty_generate(report ? report.to_h : snapshot.to_h) if format == "json"
+      return Reports::Drift.new(report).render if report
+
+      snapshot.to_json
+    end
+
+    # The snapshot is written only where the maintainer explicitly asked for it,
+    # never inside the repository by default - recording drift is not licence to
+    # start writing files.
+    def save_snapshot(snapshot, destination)
+      File.write(destination, snapshot.to_json)
+      warn "Recorded contract snapshot for #{snapshot.repository} → #{destination}"
+    end
 
     def render_baseline(baseline, format)
       case format
