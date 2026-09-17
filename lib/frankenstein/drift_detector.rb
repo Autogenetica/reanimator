@@ -19,35 +19,64 @@ module Frankenstein
     # why a difference did or did not require review.
     Verdict = Struct.new(:severity, :explanation)
 
+    # Every judgement this detector can make, gathered in one place: "why did
+    # that need review?" is a question about policy, and the answer should not
+    # be scattered through the code that happened to notice the difference.
+    CHANGED_INTENT = Verdict.new(:policy, "A lifecycle decision changed; what the repository owes changes with it.")
+    CHANGED_PROFILE = Verdict.new(:policy, "The vitality profile changed, so the whole definition of healthy moved.")
+    CHANGED_POSTURE = Verdict.new(:policy, "The security posture changed, altering how strictly findings are treated.")
+    WIDENED_AUTONOMY = Verdict.new(:policy, "Autonomy was widened: the agent may now do more here than it could.")
+    NARROWED_AUTONOMY = Verdict.new(:benign, "Autonomy was narrowed; the agent may do less than it could.")
+    UNPROTECTED_PATH = Verdict.new(:policy, "A path lost its elevated review; changes there no longer need a human.")
+    PROTECTED_PATH = Verdict.new(:benign, "More of the repository is protected than before.")
+    NARROWED_MATRIX = Verdict.new(:policy, "The runtime matrix narrowed: a version that used to be exercised no longer is.")
+    WIDENED_MATRIX = Verdict.new(:benign, "The runtime matrix widened; more versions are exercised.")
+    REMOVED_CONTROL = Verdict.new(:policy, "A security gate was removed; it is no longer part of the proof.")
+    ADDED_CONTROL = Verdict.new(:benign, "A security gate was added.")
+    DROPPED_REQUIRED = Verdict.new(:policy, "A required obligation is gone; nothing proves it any more.")
+    DROPPED_OPTIONAL = Verdict.new(:benign, "An optional check is gone.")
+    ADDED_CRITERION = Verdict.new(:benign, "More is proven than before.")
+    RELAXED_OBLIGATION = Verdict.new(:policy, "An obligation stopped blocking; failing it no longer holds anything back.")
+    TIGHTENED_OBLIGATION = Verdict.new(:benign, "An obligation became blocking; more is required than before.")
+    MOVED_EVALUATOR = Verdict.new(:policy, "The way this obligation is proven changed, so old and new evidence are not comparable.")
+    # The specification's own example of drift that is *not* alarming: the
+    # obligation is identical, only the command spelling moved.
+    RENAMED_COMMAND = Verdict.new(:benign, "The same obligation is proven by a differently spelled command.")
+    ADDED_WAIVER = Verdict.new(:policy, "An obligation is now accepted as risk instead of proven.")
+    REMOVED_WAIVER = Verdict.new(:benign, "Accepted risk was withdrawn; the obligation is blocking again.")
+    EXTENDED_WAIVER = Verdict.new(:policy, "Accepted risk was extended, so the exception outlives the decision that made it.")
+    SHORTENED_WAIVER = Verdict.new(:benign, "Accepted risk was shortened.")
+
+    # Scalar fields whose value simply must not change unnoticed.
+    SCALAR_RULES = {
+      intent: CHANGED_INTENT,
+      profile: CHANGED_PROFILE,
+      security_posture: CHANGED_POSTURE
+    }.freeze
+
     # How one set-valued part of a snapshot drifts. Membership changes are the
     # same shape everywhere - something is in the old set, or the new one, or
     # both - so the only thing that varies is what each direction means.
     SetRule = Struct.new(:field, :subject, :on_removed, :on_added)
 
     SET_RULES = [
-      SetRule.new(
-        :protected_paths, "protected path",
-        Verdict.new(:policy, "A path lost its elevated review; changes there no longer need a human."),
-        Verdict.new(:benign, "More of the repository is protected than before.")
-      ),
-      SetRule.new(
-        :support_matrix, "supported runtime",
-        Verdict.new(:policy, "The runtime matrix narrowed: a version that used to be exercised no longer is."),
-        Verdict.new(:benign, "The runtime matrix widened; more versions are exercised.")
-      ),
-      SetRule.new(
-        :security_controls, "security control",
-        Verdict.new(:policy, "A security gate was removed; it is no longer part of the proof."),
-        Verdict.new(:benign, "A security gate was added.")
-      )
+      SetRule.new(:protected_paths, "protected path", UNPROTECTED_PATH, PROTECTED_PATH),
+      SetRule.new(:support_matrix, "supported runtime", NARROWED_MATRIX, WIDENED_MATRIX),
+      SetRule.new(:security_controls, "security control", REMOVED_CONTROL, ADDED_CONTROL)
     ].freeze
 
-    # Scalar fields whose value simply must not change unnoticed.
-    SCALAR_RULES = {
-      intent: "A lifecycle decision changed; what the repository owes changes with it.",
-      profile: "The vitality profile changed, so the whole definition of healthy moved.",
-      security_posture: "The security posture changed, altering how strictly findings are treated."
-    }.freeze
+    # One comparable field of a criterion that both snapshots record. Whether
+    # the difference matters can depend on its direction, so each rule judges
+    # its own before/after rather than exposing a severity outright.
+    CriterionRule = Struct.new(:field, :subject, :judge) do
+      def verdict(before, after) = judge.call(before, after)
+    end
+
+    CRITERION_RULES = [
+      CriterionRule.new(:required, "required", ->(before, _after) { before ? RELAXED_OBLIGATION : TIGHTENED_OBLIGATION }),
+      CriterionRule.new(:evaluator, "evaluator", ->(_before, _after) { MOVED_EVALUATOR }),
+      CriterionRule.new(:run, "command", ->(_before, _after) { RENAMED_COMMAND })
+    ].freeze
 
     # Autonomy is a grant, not a scale: anything other than :disabled is a
     # grant, and :automatic grants it without a human in the loop.
@@ -85,12 +114,12 @@ module Frankenstein
     end
 
     def scalar_changes
-      SCALAR_RULES.filter_map do |field, explanation|
+      SCALAR_RULES.filter_map do |field, verdict|
         before = @previous.public_send(field)
         after = @current.public_send(field)
         next if before == after
 
-        change(field.to_s.tr("_", " "), :changed, Verdict.new(:policy, explanation), from: before, to: after)
+        change(field.to_s.tr("_", " "), :changed, verdict, from: before, to: after)
       end
     end
 
@@ -100,15 +129,8 @@ module Frankenstein
         after = @current.autonomy[rung] || :disabled
         next if before == after
 
-        change("autonomy #{rung}", :changed, autonomy_verdict(before, after), from: before, to: after)
-      end
-    end
-
-    def autonomy_verdict(before, after)
-      if rank(after) > rank(before)
-        Verdict.new(:policy, "Autonomy was widened: the agent may now do more here than it could.")
-      else
-        Verdict.new(:benign, "Autonomy was narrowed; the agent may do less than it could.")
+        verdict = (rank(after) > rank(before)) ? WIDENED_AUTONOMY : NARROWED_AUTONOMY
+        change("autonomy #{rung}", :changed, verdict, from: before, to: after)
       end
     end
 
@@ -129,113 +151,44 @@ module Frankenstein
       after_ids = @current.criterion_ids
 
       (before_ids - after_ids).map { |id| dropped_criterion(id) } +
-        (after_ids - before_ids).map { |id| added_criterion(id) } +
+        (after_ids - before_ids).map { |id| change("criterion", :added, ADDED_CRITERION, to: id) } +
         (before_ids & after_ids).flat_map { |id| altered_criterion(id) }
     end
 
     def dropped_criterion(id)
-      verdict =
-        if @previous.criterion(id)[:required]
-          Verdict.new(:policy, "A required obligation is gone; nothing proves it any more.")
-        else
-          Verdict.new(:benign, "An optional check is gone.")
-        end
-
+      verdict = @previous.requires?(id) ? DROPPED_REQUIRED : DROPPED_OPTIONAL
       change("criterion", :removed, verdict, from: id)
-    end
-
-    def added_criterion(id)
-      change("criterion", :added, Verdict.new(:benign, "More is proven than before."), to: id)
     end
 
     def altered_criterion(id)
       before = @previous.criterion(id)
       after = @current.criterion(id)
 
-      [
-        requirement_change(id, before, after),
-        evaluator_change(id, before, after),
-        command_change(id, before, after)
-      ].compact
-    end
+      CRITERION_RULES.filter_map do |rule|
+        was = before[rule.field]
+        now = after[rule.field]
+        next if was == now
 
-    def requirement_change(id, before, after)
-      return if before[:required] == after[:required]
-
-      verdict =
-        if before[:required]
-          Verdict.new(:policy, "An obligation stopped blocking; failing it no longer holds anything back.")
-        else
-          Verdict.new(:benign, "An obligation became blocking; more is required than before.")
-        end
-
-      change("criterion #{id} required", :changed, verdict, from: before[:required], to: after[:required])
-    end
-
-    def evaluator_change(id, before, after)
-      return if before[:evaluator] == after[:evaluator]
-
-      change(
-        "criterion #{id} evaluator", :changed,
-        Verdict.new(:policy, "The way this obligation is proven changed, so old and new evidence are not comparable."),
-        from: before[:evaluator], to: after[:evaluator]
-      )
-    end
-
-    # The specification's own example of drift that is *not* alarming: the
-    # obligation is identical, only the command spelling moved.
-    def command_change(id, before, after)
-      return if before[:run] == after[:run]
-
-      change(
-        "criterion #{id} command", :changed,
-        Verdict.new(:benign, "The same obligation is proven by a differently spelled command."),
-        from: before[:run], to: after[:run]
-      )
+        change("criterion #{id} #{rule.subject}", :changed, rule.verdict(was, now), from: was, to: now)
+      end
     end
 
     def waiver_changes
       before_targets = @previous.waiver_targets
       after_targets = @current.waiver_targets
 
-      (after_targets - before_targets).map { |target| added_waiver(target) } +
-        (before_targets - after_targets).map { |target| removed_waiver(target) } +
+      (after_targets - before_targets).map { |target| change("waiver", :added, ADDED_WAIVER, to: target) } +
+        (before_targets - after_targets).map { |target| change("waiver", :removed, REMOVED_WAIVER, from: target) } +
         (before_targets & after_targets).filter_map { |target| rescheduled_waiver(target) }
     end
 
-    def added_waiver(target)
-      change(
-        "waiver", :added,
-        Verdict.new(:policy, "An obligation is now accepted as risk instead of proven."),
-        to: target
-      )
-    end
-
-    def removed_waiver(target)
-      change(
-        "waiver", :removed,
-        Verdict.new(:benign, "Accepted risk was withdrawn; the obligation is blocking again."),
-        from: target
-      )
-    end
-
     def rescheduled_waiver(target)
-      before = expiry(@previous, target)
-      after = expiry(@current, target)
+      before = @previous.waiver_expiry(target)
+      after = @current.waiver_expiry(target)
       return if before == after
 
-      verdict =
-        if later?(after, before)
-          Verdict.new(:policy, "Accepted risk was extended, so the exception outlives the decision that made it.")
-        else
-          Verdict.new(:benign, "Accepted risk was shortened.")
-        end
-
+      verdict = later?(after, before) ? EXTENDED_WAIVER : SHORTENED_WAIVER
       change("waiver #{target} expiry", :changed, verdict, from: before || "open-ended", to: after || "open-ended")
-    end
-
-    def expiry(snapshot, target)
-      snapshot.waivers.find { |waiver| waiver[:target] == target }&.[](:expires)
     end
 
     # An open-ended waiver (no expiry) outlives every dated one.

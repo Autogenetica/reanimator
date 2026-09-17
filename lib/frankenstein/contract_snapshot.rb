@@ -45,22 +45,38 @@ module Frankenstein
         security_posture: contract.security_posture.to_sym,
         autonomy: contract.autonomy,
         protected_paths: contract.protected_paths,
-        criteria: contract.criteria.map do |criterion|
-          {id: criterion.id, evaluator: criterion.evaluator, run: criterion.run, required: criterion.required?}
-        end,
-        waivers: contract.waivers.map { |waiver| {target: waiver.target, expires: waiver.expires&.iso8601} },
-        support_matrix: runtime_matrix(discovery),
-        security_controls: discovery ? discovery.in_category(:security_controls).map(&:key).sort : [],
+        criteria: contract.criteria.map { |criterion| record_criterion(criterion) },
+        waivers: contract.waivers.map { |waiver| record_waiver(waiver) },
+        support_matrix: discovered_matrix(discovery),
+        security_controls: discovered_controls(discovery),
         taken_at: taken_at
       )
     end
 
+    def self.record_criterion(criterion)
+      {id: criterion.id, evaluator: criterion.evaluator, run: criterion.run, required: criterion.required?}
+    end
+    private_class_method :record_criterion
+
+    def self.record_waiver(waiver)
+      {target: waiver.target, expires: waiver.expires&.iso8601}
+    end
+    private_class_method :record_waiver
+
     # What CI actually exercises, falling back to what the project declares.
-    def self.runtime_matrix(discovery)
+    def self.discovered_matrix(discovery)
       return [] unless discovery
 
       Array(discovery.value(:ci_ruby_matrix) || discovery.value(:supported_ruby)).map(&:to_s)
     end
+    private_class_method :discovered_matrix
+
+    def self.discovered_controls(discovery)
+      return [] unless discovery
+
+      discovery.in_category(:security_controls).map(&:key).sort
+    end
+    private_class_method :discovered_controls
 
     # Rebuilds a snapshot from its serialized form, tolerating the string keys
     # a JSON round-trip produces.
@@ -74,18 +90,26 @@ module Frankenstein
         security_posture: data[:security_posture]&.to_sym,
         autonomy: (data[:autonomy] || {}).transform_values(&:to_sym),
         protected_paths: Array(data[:protected_paths]).map(&:to_s),
-        criteria: Array(data[:criteria]).map do |criterion|
-          {
-            id: criterion[:id]&.to_sym, evaluator: criterion[:evaluator]&.to_sym,
-            run: criterion[:run], required: criterion[:required]
-          }
-        end,
-        waivers: Array(data[:waivers]).map { |waiver| {target: waiver[:target]&.to_sym, expires: waiver[:expires]} },
+        criteria: Array(data[:criteria]).map { |criterion| restore_criterion(criterion) },
+        waivers: Array(data[:waivers]).map { |waiver| restore_waiver(waiver) },
         support_matrix: Array(data[:support_matrix]).map(&:to_s),
         security_controls: Array(data[:security_controls]).map(&:to_sym),
         taken_at: data[:taken_at]
       )
     end
+
+    def self.restore_criterion(criterion)
+      {
+        id: criterion[:id]&.to_sym, evaluator: criterion[:evaluator]&.to_sym,
+        run: criterion[:run], required: criterion[:required]
+      }
+    end
+    private_class_method :restore_criterion
+
+    def self.restore_waiver(waiver)
+      {target: waiver[:target]&.to_sym, expires: waiver[:expires]}
+    end
+    private_class_method :restore_waiver
 
     def self.load(path)
       from_h(JSON.parse(File.read(path, encoding: "UTF-8")))
@@ -111,7 +135,16 @@ module Frankenstein
 
     def criterion_ids = criteria.map { |c| c[:id] }
 
+    # Whether a recorded criterion was blocking. Asked rather than dug out of
+    # the criterion hash, so callers never have to know its shape.
+    def requires?(id) = criterion(id)&.fetch(:required, false) == true
+
     def waiver_targets = waivers.map { |w| w[:target] }
+
+    # When accepted risk for a target runs out, or nil for open-ended.
+    def waiver_expiry(target)
+      waivers.find { |waiver| waiver[:target] == target }&.[](:expires)
+    end
 
     def to_h
       {
