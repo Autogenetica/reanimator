@@ -8,6 +8,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Repository families (section 10): related repositories are treated as a
+  compatibility graph rather than isolated targets. `Relationship` carries the
+  seven typed edges, `Family` holds members/roles/gates (and parses the section
+  10 family-policy shape), and `FamilyInference` derives families from portfolio
+  structure - a project with its `-examples` suite, `-example-*` deployment
+  samples, `-docs`, or a `<host>-<project>` plugin. Declaration wins over
+  inference on both ends of an edge.
+- `Family::GateRunner` proves each edge by running the downstream member's own
+  check (a smoke script, else its discovered tests) read-only, bounded, and in a
+  disposable copy - a candidate change upstream triggers downstream checks
+  without opening anything downstream. A failure names **the exact edge that
+  broke**, not merely the repository that ran.
+- CLI: `frankenstein families` and `frankenstein gates [--execute] [--family ID]`.
+
 - Waivers (section 09): explicit, attributable, optionally time-bounded
   exceptions declared in `.frankenstein.yml`. A waived required criterion is
   recorded as **accepted risk** — not counted as verified, kept out of the

@@ -29,6 +29,28 @@ module RepositoryFixture
     Frankenstein::Repository.at(make_repo(**kwargs))
   end
 
+  # Creates a directory of *named* repositories under one parent, returning
+  # their paths in the order given. Family inference keys off repository
+  # names, so those names have to be controllable.
+  #
+  # @param repositories [Hash{String=>Hash}] name => (relative path => contents)
+  # @return [Array<String>] absolute paths
+  def make_portfolio(repositories)
+    root = Dir.mktmpdir("frankenstein-portfolio")
+    (@fixture_dirs ||= []) << root
+
+    repositories.map do |name, files|
+      dir = File.join(root, name.to_s)
+      FileUtils.mkdir_p(dir)
+      (files || {}).each do |relative, contents|
+        full = File.join(dir, relative)
+        FileUtils.mkdir_p(File.dirname(full))
+        File.write(full, contents)
+      end
+      dir
+    end
+  end
+
   private
 
   def init_git(dir, upstream: nil)

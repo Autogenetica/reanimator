@@ -132,6 +132,29 @@ module Frankenstein
     RepairRun.new(contract(path), provider: provider, task_class: task_class).run
   end
 
+  # Infer the compatibility graph for a set of repository paths: which
+  # repositories must stay alive together, and what proves each edge.
+  #
+  # @param paths [Array<String>]
+  # @return [Array<Family>]
+  def self.families(paths)
+    FamilyInference.call(inventory(paths))
+  end
+
+  # Evaluate cross-repository gates for the inferred families. Read-only by
+  # default: each downstream check only runs when execution is requested, and
+  # then in a disposable copy of the downstream repository.
+  #
+  # @param paths [Array<String>]
+  # @param family [Symbol, String, nil] limit to one family id
+  # @param execute [Boolean]
+  # @return [Array<Array(Family, Array<Family::GateResult>)>]
+  def self.family_gates(paths, family: nil, execute: false)
+    found = families(paths)
+    found = found.select { |f| f.id == family.to_sym } if family
+    found.map { |f| [f, Family::GateRunner.new(f, execute: execute).run] }
+  end
+
   # Adapters for every built-in provider, with default connections - the roster
   # the CLI lists with availability.
   # @return [Array<Agents::Adapter>]

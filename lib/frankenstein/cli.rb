@@ -131,6 +131,41 @@ module Frankenstein
       end
     end
 
+    desc "families [PATH...]", "Show the compatibility graph: repositories that must stay alive together"
+    long_desc <<~DESC
+      Section 10. Groups related repositories into families from their structure -
+      a project and its examples, deployment samples, docs, or plugins - and shows
+      the typed edge between each pair plus the gate that proves it.
+    DESC
+    def families(*paths)
+      guard do
+        paths = [Dir.pwd] if paths.empty?
+        puts Reports::Families.new(Frankenstein.families(paths)).render
+      end
+    end
+
+    desc "gates [PATH...]", "Evaluate cross-repository family gates (read-only)"
+    long_desc <<~DESC
+      Proves each family edge by running the downstream member's own check. A
+      candidate change upstream can trigger these downstream checks without
+      opening anything downstream: with --execute each check runs bounded, in a
+      disposable copy, never in the downstream working tree. A failure names the
+      exact edge that broke.
+    DESC
+    option :family, desc: "Limit to one family id"
+    option :execute, type: :boolean, default: false, desc: "Actually run downstream checks (bounded, read-only)"
+    def gates(*paths)
+      guard do
+        paths = [Dir.pwd] if paths.empty?
+        evaluated = Frankenstein.family_gates(paths, family: options[:family], execute: options[:execute])
+        if evaluated.empty?
+          puts "No repository families detected."
+        else
+          puts evaluated.map { |family, results| Reports::FamilyGates.new(family, results).render }.join("\n\n")
+        end
+      end
+    end
+
     private
 
     def render_baseline(baseline, format)

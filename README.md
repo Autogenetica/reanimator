@@ -172,6 +172,38 @@ Every outcome is recorded as an immutable run-ledger entry (`no_op`, `report`,
 `draft_pr`, `escalation`, `safe_stop`). Submitting a proposed change to GitHub is
 a deliberate, separate step — not something repair does on its own.
 
+### Repository families — `families` and `gates`
+
+Related projects are a compatibility graph, not isolated targets. Families are
+inferred from portfolio structure (a project and its `-examples` suite,
+`-example-*` deployment samples, `-docs`, or a `<host>-<project>` plugin):
+
+```console
+$ frankenstein families ~/src/*
+Repository families — 2 families (4 repositories that must stay alive together)
+
+agentic:
+  - agentic (library)
+  - agentic-examples (compatibility suite)
+  edge: agentic -> agentic-examples (compatibility suite)
+  gate: agentic requires its own proof command in agentic-examples
+```
+
+`gates` proves each edge by running the downstream member's own check — read-only,
+bounded, in a disposable copy, so an upstream change triggers downstream checks
+**without opening anything downstream**. A failure names the exact edge:
+
+```console
+$ frankenstein gates ~/src/* --execute
+Family gates — slimer
+  ✗ slimer -> slimer-example-docker (deployment example) — bin/smoke failed.
+BROKEN EDGE: slimer -> slimer-example-docker (deployment example)
+```
+
+A repository can also declare its membership (`family: {id:, role:}`), and a full
+section 10 family policy with explicit `members:` and `gates:` is parsed as-is.
+Declaration always wins over inference.
+
 ### Accepted risk — waivers
 
 Sometimes a known failure is a deliberate, tracked decision, not a gap. A waiver
@@ -276,7 +308,7 @@ Two rules are **enforced**, not just documented:
 | 11 Autonomy ladder & permission model | ✅ `AutonomyLevel`, `TaskClass`, `PermissionModel` |
 | 13 / 17 Bounded repair & run ledger | ✅ `RepairRun`, `Obligation`, `ProposedChange`, `Run` (no writes) |
 | 18 MVP slices 1–4 | ✅ Inventory→baseline→commissioning→bounded repair |
-| 10 Repository families | ⏳ Detected as relationships; gates deferred |
+| 10 Repository families & compatibility graphs | ✅ `Relationship`, `Family`, `FamilyInference`, `Family::GateRunner` |
 | 12 Security controls | ⏳ Modeled; enforcement expands with submission |
 | Draft-PR *submission* to GitHub | ⏳ Deliberate opt-in; artifact is ready, the write is not wired |
 | GitHub App, web UI | ⏳ Explicitly later (spec sections 03, 18) |
