@@ -94,6 +94,29 @@ module Frankenstein
     BaselineRunner.new(contract(path, intent: intent), execute: execute).run
   end
 
+  # Capture the contract a repository resolves to right now, in a form that can
+  # be recorded and compared later.
+  #
+  # @param path [String] repository root on disk
+  # @param intent [Symbol, nil] override the inferred lifecycle intent
+  # @return [ContractSnapshot]
+  def self.snapshot(path, intent: nil)
+    ContractSnapshot.of(contract(path, intent: intent))
+  end
+
+  # Detect configuration drift (section 06): compare the contract a repository
+  # resolves to now against a previously recorded snapshot, classifying each
+  # difference as a policy change (a human should look) or a benign one.
+  #
+  # @param path [String] repository root on disk
+  # @param since [String, ContractSnapshot] a recorded snapshot, or a path to one
+  # @param intent [Symbol, nil] override the inferred lifecycle intent
+  # @return [DriftReport]
+  def self.drift(path, since:, intent: nil)
+    previous = since.is_a?(ContractSnapshot) ? since : ContractSnapshot.load(since.to_s)
+    DriftDetector.between(previous, snapshot(path, intent: intent))
+  end
+
   # Default environment-variable names where each hosted provider's credentials
   # would live. Credentials are never read from a repository (section 08).
   CREDENTIAL_REFS = {

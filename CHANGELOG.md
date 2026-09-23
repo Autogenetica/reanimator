@@ -8,6 +8,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Configuration drift (section 06): `ContractSnapshot` records what a
+  repository was required to prove at a point in time, and `DriftDetector`
+  compares a later resolution against it. Every difference is classified by one
+  question — *is less being proven than before?* A narrowed runtime matrix, a
+  removed security gate, a dropped required obligation, a widened autonomy
+  grant or a fresh waiver are **policy changes** and ask for a human; a renamed
+  test command, an added check or a withdrawn waiver are **benign** and do not
+  interrupt anyone. The snapshot carries discovered evidence as well as the
+  declared file, so drift that never touches `.frankenstein.yml` is still seen.
+- CLI: `frankenstein drift [--since FILE] [--save FILE]`, exiting non-zero on a
+  policy change so CI can gate on it. The only file written is the one named
+  with `--save`.
+
 - Repository families (section 10): related repositories are treated as a
   compatibility graph rather than isolated targets. `Relationship` carries the
   seven typed edges, `Family` holds members/roles/gates (and parses the section
@@ -74,6 +87,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - CLI addition: `frankenstein repair`.
 
 ### Fixed
+
+- `frankenstein drift --format text` now prints text. With no `--since` it
+  described the repository's current obligations in prose instead of emitting
+  JSON, which contradicted its own `--format` flag; `--format json` is
+  unchanged for machine use.
+- A drift report now ends by saying how to accept drift that was intended,
+  naming the exact `--save` command - the build log is the only place the
+  maintainer is looking.
+- Drift comparison fails closed and refuses input it cannot trust. A snapshot
+  file is ordinary input, so one that is valid JSON but not a snapshot, or a
+  path that is a directory, now fails as a clean error instead of a raw
+  `TypeError`/`Errno` backtrace - as does `--save` into a directory that does
+  not exist. A waiver whose new expiry cannot be parsed is treated as a policy
+  change rather than silently filed as "shortened".
+- A recorded `ContractSnapshot` is genuinely immutable: its criteria, paths and
+  matrices can no longer be edited after the fact (a bare `freeze` left them
+  writable), and recording a contract no longer freezes the live contract.
+- Drift identifies a repository by its git origin when both snapshots carry
+  one, so two checkouts that merely share a directory name are refused instead
+  of reporting the most dangerous possible answer: "no drift".
 
 - Baseline/repair command execution now runs in a disposable copy of the
   repository, never the original working tree (spec section 14), so `gem build`,

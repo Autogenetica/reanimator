@@ -53,3 +53,65 @@ RSpec.describe "reports" do
     end
   end
 end
+
+RSpec.describe "drift reporting" do
+  def snapshot_for(files)
+    contract = Frankenstein::EffectivePolicyResolver.new(Frankenstein::Repository.at(make_repo(files: files))).resolve
+    Frankenstein::ContractSnapshot.of(contract)
+  end
+
+  let(:declared) do
+    {".frankenstein.yml" => <<~YAML}
+      version: 1
+      intent: maintain
+      profile: generic
+      acceptance:
+        checks:
+          - id: tests
+            claim: "the suite passes"
+            run: "bundle exec rspec"
+            required: true
+    YAML
+  end
+
+  # `--format text` used to print JSON whenever there was no --since, which
+  # contradicted its own flag and greeted a new user with a wall of braces.
+  it "describes what a repository is required to prove, in prose" do
+    rendered = Frankenstein::Reports::Snapshot.new(snapshot_for(declared)).render
+
+    expect(rendered).to include("Contract snapshot —")
+    expect(rendered).to match(/Proves:\s+\d+ criteri/)
+    expect(rendered).to include("Record this with --save FILE")
+    expect(rendered).not_to include("{")
+  end
+
+  it "names the file it was recorded to, and how to compare against it" do
+    rendered = Frankenstein::Reports::Snapshot.new(snapshot_for(declared), saved_to: "snap.json").render
+
+    expect(rendered).to include("Recorded to snap.json")
+    expect(rendered).to include("frankenstein drift --since snap.json")
+  end
+
+  it "reads the same whether the snapshot is fresh or loaded from disk" do
+    fresh = snapshot_for(declared)
+    loaded = Frankenstein::ContractSnapshot.from_h(JSON.parse(fresh.to_json))
+
+    taken = ->(s) { Frankenstein::Reports::Snapshot.new(s).render.lines[1] }
+    expect(taken.call(loaded)).to eq(taken.call(fresh))
+  end
+
+  # A maintainer whose build just went red is looking at this output and
+  # nowhere else, so it has to say how to accept drift they meant.
+  it "tells a maintainer how to accept drift they intended" do
+    path = make_repo(files: declared)
+    resolve = -> { Frankenstein::ContractSnapshot.of(Frankenstein::EffectivePolicyResolver.new(Frankenstein::Repository.at(path)).resolve) }
+
+    before = resolve.call
+    File.write(File.join(path, ".frankenstein.yml"), declared[".frankenstein.yml"].sub("required: true", "required: false"))
+    report = Frankenstein::DriftDetector.between(before, resolve.call)
+
+    rendered = Frankenstein::Reports::Drift.new(report, recorded_in: "snap.json").render
+    expect(rendered).to include("REVIEW REQUIRED")
+    expect(rendered).to include("frankenstein drift --save snap.json")
+  end
+end
