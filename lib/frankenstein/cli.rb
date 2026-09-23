@@ -132,8 +132,10 @@ module Frankenstein
 
       With --since, compares against a recorded snapshot and exits non-zero when
       a policy change is found, so CI can gate on it. With --save, records the
-      current snapshot to that file. With neither, prints the snapshot as JSON.
-      The only file Frankenstein ever writes is the one you name with --save.
+      current snapshot to that file. With neither, shows what this repository is
+      currently required to prove. Use --format json for either as machine
+      input. The only file Frankenstein ever writes is the one you name with
+      --save.
     DESC
     option :since, desc: "Path to a recorded snapshot to compare against"
     option :save, desc: "Path to write the current snapshot to"
@@ -145,8 +147,8 @@ module Frankenstein
         report = options[:since] && Frankenstein.drift(path, since: options[:since], intent: intent_override)
         snapshot = report&.current || Frankenstein.snapshot(path, intent: intent_override)
 
-        puts render_drift(report, snapshot, options[:format]) if report || !options[:save]
         save_snapshot(snapshot, options[:save]) if options[:save]
+        puts render_drift(report, snapshot, options[:format])
         exit 1 if report&.requires_review?
       end
     end
@@ -199,9 +201,9 @@ module Frankenstein
 
     def render_drift(report, snapshot, format)
       return JSON.pretty_generate(report ? report.to_h : snapshot.to_h) if format == "json"
-      return Reports::Drift.new(report).render if report
+      return Reports::Drift.new(report, recorded_in: options[:since]).render if report
 
-      snapshot.to_json
+      Reports::Snapshot.new(snapshot, saved_to: options[:save]).render
     end
 
     # The snapshot is written only where the maintainer explicitly asked for it,

@@ -88,6 +88,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `frankenstein drift --format text` now prints text. With no `--since` it
+  described the repository's current obligations in prose instead of emitting
+  JSON, which contradicted its own `--format` flag; `--format json` is
+  unchanged for machine use.
+- A drift report now ends by saying how to accept drift that was intended,
+  naming the exact `--save` command - the build log is the only place the
+  maintainer is looking.
 - Drift comparison fails closed and refuses input it cannot trust. A snapshot
   file is ordinary input, so one that is valid JSON but not a snapshot, or a
   path that is a directory, now fails as a clean error instead of a raw

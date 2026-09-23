@@ -212,6 +212,14 @@ what its evidence resolves to now, and sorts every difference by one question:
 **is less being proven than before?**
 
 ```console
+$ frankenstein drift                       # what am I required to prove right now?
+Contract snapshot — codenamev/widget
+Intent:   maintain   Profile: ruby-gem   Security: balanced posture
+Proves:   4 criteria (2 required)
+Evidence: runtimes 3.3, 3.4 · security gates dependabot
+
+Nothing was written. Record this with --save FILE, then compare later with --since FILE.
+
 $ frankenstein drift --save .frankenstein-snapshot.json
 Recorded contract snapshot for codenamev/widget → .frankenstein-snapshot.json
 
@@ -229,12 +237,15 @@ Benign changes — 1
     The same obligation is proven by a differently spelled command.
 
 REVIEW REQUIRED: 2 policy changes — less is being proven than before.
+
+Intended? Re-record with: frankenstein drift --save .frankenstein-snapshot.json
 ```
 
 A renamed test command is benign — the obligation did not move, only its
 spelling. A narrowed matrix or a removed gate is a policy change nobody
 necessarily decided on, so it is never buried in the benign list. The command
-exits non-zero on policy drift, so CI can gate on it, and the snapshot captures
+exits non-zero on policy drift, so CI can gate on it (and says how to accept
+drift you meant). The snapshot captures
 *discovered* evidence too — drift that never touches `.frankenstein.yml` is
 still caught.
 

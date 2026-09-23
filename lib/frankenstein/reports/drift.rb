@@ -6,14 +6,15 @@ module Frankenstein
     # change never blur together: policy changes come first, under a heading
     # that says a human is needed, and benign changes follow as information.
     class Drift
-      def initialize(report)
+      def initialize(report, recorded_in: nil)
         @report = report
+        @recorded_in = recorded_in
       end
 
       def render
         return quiet unless @report.drifted?
 
-        ([header] + sections + [verdict]).compact.join("\n\n")
+        ([header] + sections + [verdict, next_step]).compact.join("\n\n")
       end
 
       private
@@ -42,6 +43,13 @@ module Frankenstein
           lines << "    #{change.explanation}"
         end
         lines.join("\n")
+      end
+
+      # A maintainer whose build just went red needs to know how to accept
+      # drift they meant to introduce; the report is the only place they are
+      # looking.
+      def next_step
+        "Intended? Re-record with: frankenstein drift --save #{@recorded_in || "FILE"}"
       end
 
       def verdict
