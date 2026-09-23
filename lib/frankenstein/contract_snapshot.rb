@@ -22,12 +22,12 @@ module Frankenstein
     def initialize(repository:, intent:, profile:, security_posture:, autonomy: {},
       protected_paths: [], criteria: [], waivers: [], support_matrix: [],
       security_controls: [], origin: nil, taken_at: nil)
-      @repository = repository
-      @origin = origin
+      @repository = immutable(repository)
+      @origin = immutable(origin)
       @intent = intent
       @profile = profile
       @security_posture = security_posture
-      @autonomy = autonomy
+      @autonomy = immutable(autonomy)
       @protected_paths = immutable(protected_paths)
       @criteria = immutable(criteria)
       @waivers = immutable(waivers)

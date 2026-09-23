@@ -108,6 +108,8 @@ RSpec.describe Frankenstein::ContractSnapshot do
     expect { snapshot.protected_paths << "anything" }.to raise_error(FrozenError)
     expect { snapshot.criteria.first[:required] = false }.to raise_error(FrozenError)
     expect { snapshot.support_matrix << "9.9" }.to raise_error(FrozenError)
+    expect { snapshot.autonomy[:repair] = :automatic }.to raise_error(FrozenError)
+    expect { snapshot.repository << "!" }.to raise_error(FrozenError)
   end
 
   it "does not freeze the contract it was recorded from" do
