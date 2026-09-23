@@ -75,7 +75,7 @@ module Frankenstein
     def to_h
       {
         repository: repository,
-        since: since.is_a?(Time) ? since.iso8601 : since,
+        since: since,
         drifted: drifted?,
         requires_review: requires_review?,
         policy_changes: policy_changes.map(&:to_h),

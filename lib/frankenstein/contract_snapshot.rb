@@ -13,6 +13,9 @@ module Frankenstein
   # policy change, and both live in discovered evidence rather than in the
   # declared file, so the snapshot carries them too.
   class ContractSnapshot
+    # `taken_at` is normalized to an ISO-8601 string on the way in: a snapshot
+    # exists to be written down and read back, so the moment it records reads
+    # the same whether it was just taken or loaded from a file.
     attr_reader :repository, :origin, :intent, :profile, :security_posture, :autonomy,
       :protected_paths, :criteria, :waivers, :support_matrix, :security_controls, :taken_at
 
@@ -30,7 +33,7 @@ module Frankenstein
       @waivers = immutable(waivers)
       @support_matrix = immutable(support_matrix)
       @security_controls = immutable(security_controls)
-      @taken_at = taken_at
+      @taken_at = taken_at.is_a?(Time) ? taken_at.iso8601 : taken_at
       freeze
     end
 
@@ -173,7 +176,7 @@ module Frankenstein
     def to_h
       {
         repository: repository, origin: origin,
-        taken_at: taken_at.is_a?(Time) ? taken_at.iso8601 : taken_at,
+        taken_at: taken_at,
         intent: intent, profile: profile, security_posture: security_posture,
         autonomy: autonomy, protected_paths: protected_paths, criteria: criteria,
         waivers: waivers, support_matrix: support_matrix, security_controls: security_controls

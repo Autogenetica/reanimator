@@ -18,14 +18,7 @@ module Frankenstein
       private
 
       def header
-        "Contract snapshot — #{@snapshot.repository}\nTaken:    #{taken_at}"
-      end
-
-      # A freshly recorded snapshot holds a Time; one loaded from disk holds
-      # the string it was serialized as. They must read the same.
-      def taken_at
-        moment = @snapshot.taken_at
-        moment.is_a?(Time) ? moment.iso8601 : moment
+        "Contract snapshot — #{@snapshot.repository}\nTaken:    #{@snapshot.taken_at}"
       end
 
       def policy
