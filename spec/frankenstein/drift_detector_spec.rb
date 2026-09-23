@@ -101,6 +101,18 @@ RSpec.describe Frankenstein::DriftDetector do
       expect(extended.policy_changes.first.explanation).to match(/extended/)
     end
 
+    # Every other judgement here fails closed. An expiry nobody can parse is
+    # not evidence that the accepted risk got smaller, so it must not be filed
+    # under "nobody needs to look".
+    it "flags a waiver whose new expiry cannot be read, rather than assuming it shrank" do
+      before = snapshot(waivers: [{target: :tests, expires: "2030-01-01T00:00:00Z"}])
+      after = snapshot(waivers: [{target: :tests, expires: "whenever we get to it"}])
+      report = described_class.between(before, after)
+
+      expect(report.requires_review?).to be(true)
+      expect(report.policy_changes.first.explanation).to match(/cannot be read/)
+    end
+
     it "treats an open-ended waiver as outliving every dated one" do
       before = snapshot(waivers: [{target: :tests, expires: "2030-01-01T00:00:00Z"}])
       after = snapshot(waivers: [{target: :tests, expires: nil}])
@@ -166,6 +178,25 @@ RSpec.describe Frankenstein::DriftDetector do
   it "refuses to compare two different repositories" do
     expect { described_class.between(snapshot, snapshot(repository: "codenamev/other")) }
       .to raise_error(Frankenstein::ContractError, /only meaningful within one repository/)
+  end
+
+  # Two local checkouts can share a directory name, and matching on the name
+  # alone answered "no drift" - the most dangerous possible answer, since it
+  # reports a repository unchanged that was never recorded. A git origin names
+  # a repository exactly, so it decides whenever both snapshots carry one.
+  it "refuses two repositories that share a name but not an origin" do
+    recorded = snapshot(origin: "git@github.com:codenamev/widget.git")
+    current = snapshot(origin: "git@github.com:someone-else/widget.git")
+
+    expect { described_class.between(recorded, current) }
+      .to raise_error(Frankenstein::ContractError, /only meaningful within one repository/)
+  end
+
+  it "compares by origin even when the recorded names differ" do
+    recorded = snapshot(repository: "widget", origin: "git@github.com:codenamev/widget.git")
+    current = snapshot(repository: "codenamev/widget", origin: "git@github.com:codenamev/widget.git")
+
+    expect { described_class.between(recorded, current) }.not_to raise_error
   end
 
   it "serializes with the two kinds kept apart" do

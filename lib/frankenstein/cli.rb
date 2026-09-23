@@ -210,6 +210,8 @@ module Frankenstein
     def save_snapshot(snapshot, destination)
       File.write(destination, snapshot.to_json)
       warn "Recorded contract snapshot for #{snapshot.repository} → #{destination}"
+    rescue SystemCallError => e
+      raise ContractError, "Could not write the contract snapshot to #{destination}: #{e.message}"
     end
 
     def render_baseline(baseline, format)

@@ -13,25 +13,41 @@ module Frankenstein
   # policy change, and both live in discovered evidence rather than in the
   # declared file, so the snapshot carries them too.
   class ContractSnapshot
-    attr_reader :repository, :intent, :profile, :security_posture, :autonomy,
+    attr_reader :repository, :origin, :intent, :profile, :security_posture, :autonomy,
       :protected_paths, :criteria, :waivers, :support_matrix, :security_controls, :taken_at
 
     def initialize(repository:, intent:, profile:, security_posture:, autonomy: {},
       protected_paths: [], criteria: [], waivers: [], support_matrix: [],
-      security_controls: [], taken_at: nil)
+      security_controls: [], origin: nil, taken_at: nil)
       @repository = repository
+      @origin = origin
       @intent = intent
       @profile = profile
       @security_posture = security_posture
       @autonomy = autonomy
-      @protected_paths = protected_paths
-      @criteria = criteria
-      @waivers = waivers
-      @support_matrix = support_matrix
-      @security_controls = security_controls
+      @protected_paths = immutable(protected_paths)
+      @criteria = immutable(criteria)
+      @waivers = immutable(waivers)
+      @support_matrix = immutable(support_matrix)
+      @security_controls = immutable(security_controls)
       @taken_at = taken_at
       freeze
     end
+
+    # A snapshot records what was true at a moment, so it must not be editable
+    # afterwards - and `freeze` alone does not achieve that, because it leaves
+    # the recorded arrays and hashes writable. Copies are frozen rather than
+    # the caller's own collections, so recording a contract never freezes the
+    # live contract.
+    def immutable(value)
+      case value
+      when Hash then value.transform_values { |entry| immutable(entry) }.freeze
+      when Array then value.map { |entry| immutable(entry) }.freeze
+      when String then value.frozen? ? value : value.dup.freeze
+      else value
+      end
+    end
+    private :immutable
 
     # @param contract [EffectiveContract]
     # @return [ContractSnapshot]
@@ -40,6 +56,7 @@ module Frankenstein
 
       new(
         repository: contract.repository.full_name,
+        origin: Git.origin_url(contract.repository.path),
         intent: contract.intent.to_sym,
         profile: contract.profile.id,
         security_posture: contract.security_posture.to_sym,
@@ -82,9 +99,14 @@ module Frankenstein
     # a JSON round-trip produces.
     def self.from_h(hash)
       data = symbolize(hash)
+      unless data.is_a?(Hash) && data.key?(:repository)
+        raise ContractError,
+          "That is not a contract snapshot; expected the JSON object written by `frankenstein drift --save`."
+      end
 
       new(
         repository: data[:repository],
+        origin: data[:origin],
         intent: data[:intent]&.to_sym,
         profile: data[:profile]&.to_sym,
         security_posture: data[:security_posture]&.to_sym,
@@ -117,6 +139,8 @@ module Frankenstein
       raise ContractError, "#{path} is not a valid contract snapshot: #{e.message}"
     rescue Errno::ENOENT
       raise ContractError, "No contract snapshot at #{path}."
+    rescue SystemCallError => e
+      raise ContractError, "Could not read the contract snapshot at #{path}: #{e.message}"
     end
 
     def self.symbolize(value)
@@ -148,7 +172,8 @@ module Frankenstein
 
     def to_h
       {
-        repository: repository, taken_at: taken_at.is_a?(Time) ? taken_at.iso8601 : taken_at,
+        repository: repository, origin: origin,
+        taken_at: taken_at.is_a?(Time) ? taken_at.iso8601 : taken_at,
         intent: intent, profile: profile, security_posture: security_posture,
         autonomy: autonomy, protected_paths: protected_paths, criteria: criteria,
         waivers: waivers, support_matrix: support_matrix, security_controls: security_controls

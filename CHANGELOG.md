@@ -88,6 +88,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Drift comparison fails closed and refuses input it cannot trust. A snapshot
+  file is ordinary input, so one that is valid JSON but not a snapshot, or a
+  path that is a directory, now fails as a clean error instead of a raw
+  `TypeError`/`Errno` backtrace - as does `--save` into a directory that does
+  not exist. A waiver whose new expiry cannot be parsed is treated as a policy
+  change rather than silently filed as "shortened".
+- A recorded `ContractSnapshot` is genuinely immutable: its criteria, paths and
+  matrices can no longer be edited after the fact (a bare `freeze` left them
+  writable), and recording a contract no longer freezes the live contract.
+- Drift identifies a repository by its git origin when both snapshots carry
+  one, so two checkouts that merely share a directory name are refused instead
+  of reporting the most dangerous possible answer: "no drift".
+
 - Baseline/repair command execution now runs in a disposable copy of the
   repository, never the original working tree (spec section 14), so `gem build`,
   tests, and other checks cannot leave artifacts in the real checkout.

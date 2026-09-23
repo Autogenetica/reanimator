@@ -81,6 +81,42 @@ RSpec.describe Frankenstein::ContractSnapshot do
     expect(described_class.load(path).repository).to eq(snapshot.repository)
   end
 
+  # A snapshot file is ordinary input: anything on the machine can write it,
+  # and a maintainer can point --since at the wrong path. Every one of these
+  # used to escape as a raw TypeError, NoMethodError, or Errno backtrace.
+  it "refuses a file that is valid JSON but is not a snapshot" do
+    dir = make_repo
+    {"array.json" => "[1,2,3]", "number.json" => "123", "null.json" => "null",
+     "object.json" => '{"something": "else"}'}.each do |name, contents|
+      path = File.join(dir, name)
+      File.write(path, contents)
+      expect { described_class.load(path) }
+        .to raise_error(Frankenstein::ContractError, /not a contract snapshot/), "loading #{name}"
+    end
+  end
+
+  it "refuses a path that cannot be read as a file" do
+    expect { described_class.load(make_repo) }
+      .to raise_error(Frankenstein::ContractError, /Could not read the contract snapshot/)
+  end
+
+  # "What was true then" stops being trustworthy the moment anyone can edit it,
+  # and a bare freeze leaves the recorded collections writable.
+  it "cannot be edited after it is recorded" do
+    snapshot = described_class.of(contract_for(".frankenstein.yml" => "version: 1\nintent: maintain\nprofile: generic\n"))
+
+    expect { snapshot.protected_paths << "anything" }.to raise_error(FrozenError)
+    expect { snapshot.criteria.first[:required] = false }.to raise_error(FrozenError)
+    expect { snapshot.support_matrix << "9.9" }.to raise_error(FrozenError)
+  end
+
+  it "does not freeze the contract it was recorded from" do
+    contract = contract_for("README.md" => "# widget")
+    described_class.of(contract)
+
+    expect { contract.protected_paths << "config/**" }.not_to raise_error
+  end
+
   it "refuses a missing or unreadable snapshot rather than comparing against nothing" do
     missing = File.join(make_repo, "absent.json")
     expect { described_class.load(missing) }.to raise_error(Frankenstein::ContractError, /No contract snapshot/)

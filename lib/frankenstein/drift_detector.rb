@@ -46,6 +46,9 @@ module Frankenstein
     REMOVED_WAIVER = Verdict.new(:benign, "Accepted risk was withdrawn; the obligation is blocking again.")
     EXTENDED_WAIVER = Verdict.new(:policy, "Accepted risk was extended, so the exception outlives the decision that made it.")
     SHORTENED_WAIVER = Verdict.new(:benign, "Accepted risk was shortened.")
+    # Everything else here fails closed; an expiry nobody can read is not
+    # evidence that the risk got smaller, so it is not treated as if it were.
+    UNREADABLE_WAIVER = Verdict.new(:policy, "Accepted risk moved to an expiry that cannot be read, so it cannot be shown to be shorter.")
 
     # Scalar fields whose value simply must not change unnoticed.
     SCALAR_RULES = {
@@ -104,13 +107,26 @@ module Frankenstein
     private
 
     # Comparing two different repositories' snapshots would produce a report
-    # that reads plausibly and means nothing, so it is refused outright.
+    # that reads plausibly and means nothing, and the dangerous direction is
+    # "no drift" - quietly reporting a repository unchanged that was never
+    # recorded. A git origin names a repository exactly, so it decides whenever
+    # both snapshots carry one; without it the recorded names are the only
+    # evidence there is, and two same-named local checkouts are
+    # indistinguishable.
     def ensure_same_repository
-      return if @previous.repository.nil? || @current.repository.nil?
-      return if @previous.repository == @current.repository
+      recorded, current = identities
+      return if recorded.nil? || current.nil? || recorded == current
 
       raise ContractError,
-        "Snapshot is for #{@previous.repository}, not #{@current.repository}; drift is only meaningful within one repository."
+        "Snapshot is for #{recorded}, not #{current}; drift is only meaningful within one repository."
+    end
+
+    def identities
+      if @previous.origin && @current.origin
+        [@previous.origin, @current.origin]
+      else
+        [@previous.repository, @current.repository]
+      end
     end
 
     def scalar_changes
@@ -187,19 +203,18 @@ module Frankenstein
       after = @current.waiver_expiry(target)
       return if before == after
 
-      verdict = later?(after, before) ? EXTENDED_WAIVER : SHORTENED_WAIVER
-      change("waiver #{target} expiry", :changed, verdict, from: before || "open-ended", to: after || "open-ended")
+      change("waiver #{target} expiry", :changed, expiry_verdict(before, after),
+        from: before || "open-ended", to: after || "open-ended")
     end
 
     # An open-ended waiver (no expiry) outlives every dated one.
-    def later?(after, before)
-      return false if after == before
-      return true if after.nil?
-      return false if before.nil?
+    def expiry_verdict(before, after)
+      return EXTENDED_WAIVER if after.nil?
+      return SHORTENED_WAIVER if before.nil?
 
-      Time.parse(after) > Time.parse(before)
-    rescue ArgumentError
-      false
+      (Time.parse(after) > Time.parse(before)) ? EXTENDED_WAIVER : SHORTENED_WAIVER
+    rescue ArgumentError, TypeError
+      UNREADABLE_WAIVER
     end
 
     def change(subject, kind, verdict, from: nil, to: nil)
