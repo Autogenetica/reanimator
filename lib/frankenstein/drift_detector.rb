@@ -81,6 +81,9 @@ module Frankenstein
       CriterionRule.new(:run, "command", ->(_before, _after) { RENAMED_COMMAND })
     ].freeze
 
+    # How a waiver with no expiry reads in a report.
+    OPEN_ENDED = "open-ended"
+
     # Autonomy is a grant, not a scale: anything other than :disabled is a
     # grant, and :automatic grants it without a human in the loop.
     AUTONOMY_RANKS = {disabled: 0, manual: 1, proposal: 1, automatic: 2}.freeze
@@ -204,7 +207,7 @@ module Frankenstein
       return if before == after
 
       change("waiver #{target} expiry", :changed, expiry_verdict(before, after),
-        from: before || "open-ended", to: after || "open-ended")
+        from: before || OPEN_ENDED, to: after || OPEN_ENDED)
     end
 
     # An open-ended waiver (no expiry) outlives every dated one.
@@ -218,10 +221,7 @@ module Frankenstein
     end
 
     def change(subject, kind, verdict, from: nil, to: nil)
-      DriftReport::Change.new(
-        subject: subject, kind: kind, from: from, to: to,
-        severity: verdict.severity, explanation: verdict.explanation
-      )
+      DriftReport::Change.new(subject: subject, kind: kind, verdict: verdict, from: from, to: to)
     end
   end
 end

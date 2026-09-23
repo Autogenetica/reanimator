@@ -11,21 +11,26 @@ module Frankenstein
   # before, and nobody necessarily decided that on purpose. Drift detection
   # earns its keep by never burying the second kind in a list of the first.
   class DriftReport
-    # A single difference between two snapshots. It carries its own severity
-    # and the sentence explaining why it has that severity, so no caller has
-    # to re-derive the judgement in order to display it.
+    # A single difference between two snapshots, carrying the verdict that
+    # judged it - a severity and the sentence justifying that severity - so no
+    # caller has to re-derive the judgement in order to display it. The verdict
+    # arrives whole and is kept whole: a severity can never be paired with the
+    # reasoning for a different one.
     class Change
-      attr_reader :subject, :kind, :from, :to, :severity, :explanation
+      attr_reader :subject, :kind, :from, :to, :verdict
 
-      def initialize(subject:, kind:, severity:, explanation:, from: nil, to: nil)
+      def initialize(subject:, kind:, verdict:, from: nil, to: nil)
         @subject = subject
         @kind = kind
-        @severity = severity
-        @explanation = explanation
+        @verdict = verdict
         @from = from
         @to = to
         freeze
       end
+
+      def severity = verdict.severity
+
+      def explanation = verdict.explanation
 
       def policy? = severity == :policy
 
