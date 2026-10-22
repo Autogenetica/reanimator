@@ -1,0 +1,33 @@
+name: Release
+
+# `rake release` creates and pushes the version tag itself, so this workflow is
+# deliberately manual rather than tag-triggered: bump the version, merge it,
+# then run this. No release ever happens as a side effect of an ordinary push.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Publish to RubyGems
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # rake release pushes the version tag
+      id-token: write # trusted publishing: a short-lived OIDC token, no stored API key
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      # This gem's entire argument is that proof comes before action, so it
+      # does not ship a build it has not proven. Same command a contributor
+      # runs locally and the same one CI runs on every pull request.
+      - name: Prove the build before shipping it
+        run: bundle exec rake
+
+      - uses: rubygems/release-gem@v1
