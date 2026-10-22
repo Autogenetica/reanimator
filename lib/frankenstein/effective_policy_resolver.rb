@@ -34,6 +34,7 @@ module Frankenstein
       intent, intent_confirmed = resolve_intent
       profile, profile_source = resolve_profile(intent)
       autonomy, autonomy_notes = SafetyFloor.clamp_autonomy(resolve_autonomy)
+      posture = resolve_security_posture
 
       EffectiveContract.new(
         repository: repository,
@@ -41,9 +42,9 @@ module Frankenstein
         intent_confirmed: intent_confirmed,
         profile: profile,
         profile_source: profile_source,
-        criteria: build_criteria(profile),
+        criteria: build_criteria(profile, posture),
         discovery: discovery,
-        security_posture: resolve_security_posture,
+        security_posture: posture,
         autonomy: autonomy,
         protected_paths: SafetyFloor.protected_paths(declared_protected_paths),
         waivers: build_waivers,
@@ -81,16 +82,43 @@ module Frankenstein
       end
     end
 
+    # The three layers that contribute obligations, merged so a later layer
+    # overrides an earlier one by criterion id (section 07: an owner
+    # declaration wins over inference, and over a default we supplied).
+    def build_criteria(profile, posture)
+      merge_by_id(profile_criteria(profile), security_criteria(posture), declared_criteria)
+    end
+
+    # Keeps each criterion in the position it first appeared, so reports stay
+    # stable, while the last layer to claim an id supplies the criterion.
+    def merge_by_id(*layers)
+      layers.flatten.each_with_object({}) { |criterion, merged| merged[criterion.id] = criterion }.values
+    end
+
     # Profile criteria, with discovered commands substituted in for the
     # matching defaults (section 00: reuse detected checks; surface missing
-    # proof), plus any checks the owner declared.
-    def build_criteria(profile)
+    # proof).
+    def profile_criteria(profile)
       commands = discovery.discovered_commands
-      base = profile.resolved_criteria.map do |criterion|
+      profile.resolved_criteria.map do |criterion|
         run = commands[criterion.id]
         run ? with_run(criterion, run) : criterion
       end
-      base + declared_criteria
+    end
+
+    # The security evidence the posture makes binding (section 12). These are
+    # policy-owned rather than profile-owned: how much security proof a
+    # repository must show is a posture decision, not a question of what shape
+    # the project happens to be.
+    def security_criteria(posture)
+      posture.obligations.map do |control_id, required|
+        control = SecurityControl.fetch(control_id)
+        AcceptanceCriterion.new(
+          id: control.criterion_id, claim: control.claim,
+          evaluator: :security_evidence, target: control.to_s,
+          required: required, owner: "policy"
+        )
+      end
     end
 
     def with_run(criterion, run)

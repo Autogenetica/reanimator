@@ -33,8 +33,10 @@ module Frankenstein
     # Whether this result contributes proof (a verified required criterion).
     def proven? = verified?
 
-    # Whether the criterion is still unproven: no executable evidence yet.
-    def unproven? = %i[missing_evidence planned skipped].include?(status)
+    # Whether the criterion is still unproven: no evidence either way yet.
+    # An evaluator that errored belongs here too - "we could not tell" is not
+    # proof, and leaving it out would let a broken check read as green.
+    def unproven? = %i[missing_evidence planned skipped error].include?(status)
 
     def required? = criterion.required?
 
