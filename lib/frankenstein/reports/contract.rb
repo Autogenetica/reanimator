@@ -40,15 +40,9 @@ module Frankenstein
         [
           "Security posture: #{posture}",
           "  #{posture.description}",
-          "  Required: #{control_list(posture.required_controls)}",
-          "  Advisory: #{control_list(posture.advisory_controls)}"
+          "  Required: #{SecurityControl.labels(posture.required_controls)}",
+          "  Advisory: #{SecurityControl.labels(posture.advisory_controls)}"
         ].join("\n")
-      end
-
-      def control_list(ids)
-        return "none" if ids.empty?
-
-        ids.map { |id| SecurityControl.fetch(id).label }.join(", ")
       end
 
       def criteria_section

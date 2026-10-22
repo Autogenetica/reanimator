@@ -54,6 +54,14 @@ module Frankenstein
 
     def self.all = ids.map { |id| new(id) }
 
+    # How a set of controls reads in a report: their plain names, or "none" -
+    # so a posture that asks for nothing says so instead of trailing off.
+    def self.labels(ids)
+      return "none" if ids.empty?
+
+      ids.map { |id| fetch(id).label }.join(", ")
+    end
+
     # The criterion id this control is graded under. The control owns its own
     # naming so reports, waivers, and history cannot drift apart. Ids are
     # already namespaced under "security-", so a control named for security
