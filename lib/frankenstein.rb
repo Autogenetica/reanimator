@@ -117,6 +117,25 @@ module Frankenstein
     DriftDetector.between(previous, snapshot(path, intent: intent))
   end
 
+  # Detect configuration drift across several repositories at once. Each
+  # repository is compared against its own recorded snapshot - its committed
+  # `.frankenstein-snapshot.json`, or a file in `snapshots` keyed by
+  # repository - and the result is a triage list rather than one verdict.
+  #
+  # @param paths [Array<String>] repository roots on disk
+  # @param snapshots [String, nil] a directory of recorded snapshots, for
+  #   repositories you cannot commit a file into
+  # @param record [Boolean] also write each repository's current snapshot
+  # @param intent [Symbol, nil] override the inferred lifecycle intent
+  # @param name [String] portfolio name for the report header
+  # @return [PortfolioDrift]
+  def self.portfolio_drift(paths, snapshots: nil, record: false, intent: nil, name: "portfolio")
+    PortfolioDrift.scan(
+      paths, store: SnapshotStore.new(directory: snapshots),
+      record: record, intent: intent, name: name
+    )
+  end
+
   # Default environment-variable names where each hosted provider's credentials
   # would live. Credentials are never read from a repository (section 08).
   CREDENTIAL_REFS = {

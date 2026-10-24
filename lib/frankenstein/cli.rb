@@ -122,34 +122,34 @@ module Frankenstein
       end
     end
 
-    desc "drift [PATH]", "Record a contract snapshot, or detect drift against one"
+    desc "drift [PATH...]", "Record contract snapshots, or detect drift against them"
     long_desc <<~DESC
       Section 06. Configuration drift is the difference between the contract a
       repository resolved to when it was last recorded and the one its evidence
       resolves to now. Differences are separated into policy changes - less is
       being proven than before, so a human should look - and benign ones, such
-      as a renamed test command.
+      as a renamed test command. The exit status is non-zero only for a policy
+      change, so CI can gate on it.
 
-      With --since, compares against a recorded snapshot and exits non-zero when
-      a policy change is found, so CI can gate on it. With --save, records the
-      current snapshot to that file. With neither, shows what this repository is
-      currently required to prove. Use --format json for either as machine
-      input. The only file Frankenstein ever writes is the one you name with
-      --save.
+      A repository's snapshot normally lives in the repository, committed as
+      .frankenstein-snapshot.json, so a policy change arrives as a diff in a
+      pull request rather than as state hidden in a tool; --record writes it
+      there. For repositories you cannot commit a file into, --snapshots DIR
+      keeps them side by side, keyed by repository. Pass several paths for a
+      portfolio triage list. With nothing recorded yet, shows what the
+      repository is currently required to prove. The only files Frankenstein
+      ever writes are those snapshots, and only when asked.
     DESC
-    option :since, desc: "Path to a recorded snapshot to compare against"
-    option :save, desc: "Path to write the current snapshot to"
+    option :since, desc: "Path to a recorded snapshot to compare against (one repository)"
+    option :save, desc: "Path to write the current snapshot to (one repository)"
+    option :snapshots, desc: "Directory of recorded snapshots, keyed by repository"
+    option :record, type: :boolean, default: false, desc: "Record each current snapshot where it belongs"
     option :intent, desc: "Override the inferred lifecycle intent"
     option :format, default: "text", enum: %w[text json], desc: "Output format"
-    def drift(path = Dir.pwd)
+    def drift(*paths)
       guard do
-        intent_override = options[:intent]&.to_sym
-        report = options[:since] && Frankenstein.drift(path, since: options[:since], intent: intent_override)
-        snapshot = report&.current || Frankenstein.snapshot(path, intent: intent_override)
-
-        save_snapshot(snapshot, options[:save]) if options[:save]
-        puts render_drift(report, snapshot, options[:format])
-        exit 1 if report&.requires_review?
+        paths = [Dir.pwd] if paths.empty?
+        (paths.size > 1) ? portfolio_drift(paths) : single_drift(paths.first)
       end
     end
 
@@ -199,19 +199,56 @@ module Frankenstein
 
     private
 
-    def render_drift(report, snapshot, format)
-      return JSON.pretty_generate(report ? report.to_h : snapshot.to_h) if format == "json"
-      return Reports::Drift.new(report, recorded_in: options[:since]).render if report
+    # Several paths: a triage list across the portfolio, not one verdict.
+    def portfolio_drift(paths)
+      %w[since save].each do |single|
+        next unless options[single]
 
-      Reports::Snapshot.new(snapshot, saved_to: options[:save]).render
+        raise ContractError,
+          "--#{single} names one file, so it cannot be used with several repositories; use --snapshots DIR."
+      end
+
+      drift = Frankenstein.portfolio_drift(
+        paths, snapshots: options[:snapshots], record: options[:record], intent: options[:intent]&.to_sym
+      )
+      puts((options[:format] == "json") ? JSON.pretty_generate(drift.to_h) : Reports::PortfolioDrift.new(drift).render)
+      exit 1 if drift.requires_review?
     end
 
-    # The snapshot is written only where the maintainer explicitly asked for it,
-    # never inside the repository by default - recording drift is not licence to
-    # start writing files.
+    def single_drift(path)
+      store = SnapshotStore.new(directory: options[:snapshots])
+      repository = Repository.at(path)
+      snapshot = Frankenstein.snapshot(path, intent: options[:intent]&.to_sym)
+      previous = options[:since] ? ContractSnapshot.load(options[:since]) : store.load(repository)
+      report = previous && DriftDetector.between(previous, snapshot)
+
+      recorded_to = record_snapshot(snapshot, repository, store)
+      puts render_drift(report, snapshot, recorded_to, store)
+      exit 1 if report&.requires_review?
+    end
+
+    # A snapshot is written only where the maintainer asked for it: --save names
+    # an exact file, --record puts it where the store says it belongs. Nothing
+    # is written without one of them - detecting drift is not licence to start
+    # writing files.
+    def record_snapshot(snapshot, repository, store)
+      return unless options[:save] || options[:record]
+
+      written = options[:save] ? save_snapshot(snapshot, options[:save]) : store.save(snapshot, repository)
+      warn "Recorded contract snapshot for #{snapshot.repository} → #{written}"
+      written
+    end
+
+    def render_drift(report, snapshot, recorded_to, store)
+      return JSON.pretty_generate(report ? report.to_h : snapshot.to_h) if options[:format] == "json"
+      return Reports::Drift.new(report, record_with: store.record_command(options[:since])).render if report
+
+      Reports::Snapshot.new(snapshot, saved_to: recorded_to, record_with: store.record_command).render
+    end
+
     def save_snapshot(snapshot, destination)
       File.write(destination, snapshot.to_json)
-      warn "Recorded contract snapshot for #{snapshot.repository} → #{destination}"
+      destination
     rescue SystemCallError => e
       raise ContractError, "Could not write the contract snapshot to #{destination}: #{e.message}"
     end

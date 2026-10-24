@@ -6,9 +6,10 @@ module Frankenstein
     # what this repository is currently required to prove, and how to put that
     # on record so later drift has something to be measured against.
     class Snapshot
-      def initialize(snapshot, saved_to: nil)
+      def initialize(snapshot, saved_to: nil, record_with: "frankenstein drift --record")
         @snapshot = snapshot
         @saved_to = saved_to
+        @record_with = record_with
       end
 
       def render
@@ -43,10 +44,14 @@ module Frankenstein
         "Evidence: #{parts.join(" · ")}" if parts.any?
       end
 
+      # Whichever way this snapshot was recorded, the next thing a maintainer
+      # wants is the command that compares against it - so the footer names
+      # that, not the flag they happened to use.
       def footer
-        return "\nRecorded to #{@saved_to}. Compare later with: frankenstein drift --since #{@saved_to}" if @saved_to
+        return "\nRecorded to #{@saved_to}. Compare later with: frankenstein drift" if @saved_to
 
-        "\nNothing was written. Record this with --save FILE, then compare later with --since FILE."
+        "\nNothing was written. Record this with `#{@record_with}` so later drift " \
+          "has something to be measured against."
       end
 
       def count(collection, singular, plural)

@@ -218,12 +218,12 @@ Intent:   maintain   Profile: ruby-gem   Security: balanced posture
 Proves:   4 criteria (2 required)
 Evidence: runtimes 3.3, 3.4 · security gates dependabot
 
-Nothing was written. Record this with --save FILE, then compare later with --since FILE.
+Nothing was written. Record this with `frankenstein drift --record` so later drift has something to be measured against.
 
-$ frankenstein drift --save .frankenstein-snapshot.json
+$ frankenstein drift --record
 Recorded contract snapshot for codenamev/widget → .frankenstein-snapshot.json
 
-$ frankenstein drift --since .frankenstein-snapshot.json
+$ frankenstein drift                       # now there is something to compare against
 Configuration drift — codenamev/widget
 
 Policy changes (review required) — 2
@@ -238,7 +238,7 @@ Benign changes — 1
 
 REVIEW REQUIRED: 2 policy changes — less is being proven than before.
 
-Intended? Re-record with: frankenstein drift --save .frankenstein-snapshot.json
+Intended? Re-record with: frankenstein drift --record
 ```
 
 A renamed test command is benign — the obligation did not move, only its
@@ -248,6 +248,62 @@ exits non-zero on policy drift, so CI can gate on it (and says how to accept
 drift you meant). The snapshot captures
 *discovered* evidence too — drift that never touches `.frankenstein.yml` is
 still caught.
+
+The snapshot lives **in the repository**, committed as
+`.frankenstein-snapshot.json` beside `.frankenstein.yml`. That is deliberate:
+the contract and the record of what it last required are the same kind of
+thing, and keeping both under review means a policy change arrives as a diff in
+a pull request rather than as state hidden inside a tool.
+
+#### Across a portfolio
+
+Pass several paths and drift becomes a triage list. Each repository is compared
+against its own snapshot, and one unreadable member never stops the rest:
+
+```console
+$ frankenstein drift ~/src/*
+FRANKENSTEIN DRIFT
+Portfolio: portfolio
+Mode: read-only
+
+REVIEW REQUIRED — 1 repository
+  codenamev/widget
+    1 policy change
+      ! security control removed: dependabot
+        A security gate was removed; it is no longer part of the proof.
+
+CHANGED, BENIGN — 1 repository
+  codenamev/doodad
+    · criterion tests command: bundle exec rake spec → bundle exec rspec
+
+UNCHANGED — 3 repositories
+  codenamev/gadget
+  codenamev/gizmo
+  codenamev/thing
+
+NOT RECORDED — 1 repository
+  codenamev/fresh
+    nothing to compare against yet
+
+REVIEW REQUIRED: 1 policy change across 1 repository — less is being proven than before.
+Intended? Re-record with: frankenstein drift --record
+
+NO FILES WERE WRITTEN. NO SOURCE CHANGES WERE MADE.
+```
+
+For repositories you cannot commit a file into, `--snapshots DIR` keeps them
+side by side keyed by repository instead:
+
+```console
+$ frankenstein drift ~/src/* --snapshots ~/.frankenstein/snapshots --record
+```
+
+Three outcomes are deliberately distinct. A repository with **nothing
+recorded** is named, not counted as fine, and does not fail the gate — a first
+run has nothing to compare against. A repository whose snapshot **cannot be
+read** does fail it: "we could not tell" is not "nothing changed", and
+corrupting a snapshot must never be a way to pass. Benign change never fails
+it at all.
 
 ### Accepted risk — waivers
 
@@ -314,6 +370,7 @@ Frankenstein.contract(path)            #=> Frankenstein::EffectiveContract
 Frankenstein.baseline(path, execute: true) #=> Frankenstein::Baseline
 Frankenstein.snapshot(path)            #=> Frankenstein::ContractSnapshot
 Frankenstein.drift(path, since: file)  #=> Frankenstein::DriftReport
+Frankenstein.portfolio_drift(paths)    #=> Frankenstein::PortfolioDrift
 
 baseline = Frankenstein.baseline(".")
 baseline.state.to_sym                  #=> :unproven
@@ -347,7 +404,7 @@ Two rules are **enforced**, not just documented:
 | --- | --- |
 | 01–02 Model, goals, constraints | ✅ Implemented |
 | 04–05 Portfolio intake, lifecycle intent | ✅ `Portfolio`, `Classifier`, `Cohort` |
-| 06 Discovery by confirmation & drift | ✅ `Detectors::*`, provenance, confidence, `DriftDetector` |
+| 06 Discovery by confirmation & drift | ✅ `Detectors::*`, provenance, confidence, `DriftDetector`, `PortfolioDrift` |
 | 07 Configuration & precedence | ✅ `EffectivePolicyResolver`, `SafetyFloor` |
 | 09 Acceptance criteria, verifier isolation & waivers | ✅ `AcceptanceCriterion`, `Evaluators`, `Waiver` (accepted risk) |
 | 14–15 Baseline & proof-of-life | ✅ `BaselineRunner`, `ProofOfLife`, `Reports` |

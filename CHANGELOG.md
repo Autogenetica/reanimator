@@ -8,6 +8,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Portfolio drift (section 06 applied to the portfolio of section 04).
+  `frankenstein drift` now takes several paths and returns a triage list rather
+  than one verdict: repositories needing a human first, with the reason for each
+  policy change; then repositories that merely changed; then the unchanged; then
+  the ones with nothing recorded. `PortfolioDrift` is the value object,
+  `Frankenstein.portfolio_drift(paths)` the library call, and the exit status is
+  still non-zero only when something actually needs a decision.
+- `SnapshotStore` decides where a repository's recorded snapshot lives, and is
+  the only thing that writes one. The default is **in the repository**,
+  committed as `.frankenstein-snapshot.json` beside `.frankenstein.yml`, so a
+  policy change arrives as a diff in a pull request rather than as state hidden
+  inside a tool. `--snapshots DIR` keeps them portfolio-side, keyed by
+  repository, for repositories you cannot commit a file into.
+- `frankenstein drift --record` writes the snapshot where it belongs, so neither
+  recording nor comparing needs a remembered path any more: `frankenstein drift`
+  on its own now compares against the committed snapshot when there is one. The
+  reports name the command that re-records *this* snapshot rather than a
+  generic `--save FILE`.
+
 - Configuration drift (section 06): `ContractSnapshot` records what a
   repository was required to prove at a point in time, and `DriftDetector`
   compares a later resolution against it. Every difference is classified by one
@@ -87,6 +106,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - CLI addition: `frankenstein repair`.
 
 ### Fixed
+
+- A portfolio drift run fails closed on a snapshot it cannot read. An
+  unreadable or corrupt snapshot is reported as needing review rather than
+  counted among the quiet repositories - "we could not tell" is not "nothing
+  changed", and corrupting a snapshot file must never be a way to make a drift
+  gate pass. A repository with nothing recorded yet is still named without
+  failing the gate: that is a first run, not a gap.
+- One unreadable repository no longer ends a portfolio run; it becomes a failed
+  entry and every other member still reports.
 
 - `frankenstein drift --format text` now prints text. With no `--since` it
   described the repository's current obligations in prose instead of emitting
