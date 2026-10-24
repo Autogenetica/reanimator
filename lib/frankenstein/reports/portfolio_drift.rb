@@ -42,14 +42,14 @@ module Frankenstein
       def review_section
         listing("REVIEW REQUIRED", @drift.policy_changed) do |entry|
           changes = entry.report.policy_changes
-          ["    #{count(changes.size, "policy change")}"] + change_lines(changes, "!", 6, explain: true)
+          ["    #{Reports.count(changes.size, "policy change")}"] + change_lines(changes, "!", 6, explain: true)
         end
       end
 
       def listing(title, entries)
         return if entries.empty?
 
-        lines = ["#{title} — #{count(entries.size, "repository", "repositories")}"]
+        lines = ["#{title} — #{Reports.count(entries.size, "repository", "repositories")}"]
         entries.each do |entry|
           lines << "  #{entry.name}"
           lines.concat(block_given? ? yield(entry) : [])
@@ -80,8 +80,8 @@ module Frankenstein
         return if repositories.empty?
 
         total = repositories.sum { |entry| entry.report.policy_changes.size }
-        "REVIEW REQUIRED: #{count(total, "policy change")} across " \
-          "#{count(repositories.size, "repository", "repositories")} — less is being proven than before.\n" \
+        "REVIEW REQUIRED: #{Reports.count(total, "policy change")} across " \
+          "#{Reports.count(repositories.size, "repository", "repositories")} — less is being proven than before.\n" \
           "Intended? Re-record with: #{@drift.store.record_command}"
       end
 
@@ -89,7 +89,7 @@ module Frankenstein
         failures = @drift.failed
         return if failures.empty?
 
-        "REVIEW REQUIRED: #{count(failures.size, "repository", "repositories")} could not be read, " \
+        "REVIEW REQUIRED: #{Reports.count(failures.size, "repository", "repositories")} could not be read, " \
           "so drift could not be ruled out there."
       end
 
@@ -100,11 +100,7 @@ module Frankenstein
         recorded = @drift.entries.count { |entry| entry.recorded_to }
         return "NO FILES WERE WRITTEN. NO SOURCE CHANGES WERE MADE." if recorded.zero?
 
-        "Recorded #{count(recorded, "snapshot")}. NO SOURCE CHANGES WERE MADE."
-      end
-
-      def count(size, singular, plural = "#{singular}s")
-        "#{size} #{(size == 1) ? singular : plural}"
+        "Recorded #{Reports.count(recorded, "snapshot")}. NO SOURCE CHANGES WERE MADE."
       end
     end
   end

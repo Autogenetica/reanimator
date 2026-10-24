@@ -29,10 +29,10 @@ module Frankenstein
 
       def proves
         required = @snapshot.criteria.count { |criterion| criterion[:required] }
-        line = "Proves:   #{count(@snapshot.criteria, "criterion", "criteria")} (#{required} required)"
+        line = "Proves:   #{Reports.count(@snapshot.criteria.size, "criterion", "criteria")} (#{required} required)"
         return line if @snapshot.waivers.empty?
 
-        "#{line}, #{count(@snapshot.waivers, "accepted risk", "accepted risks")}"
+        "#{line}, #{Reports.count(@snapshot.waivers.size, "accepted risk")}"
       end
 
       # The evidence half of the snapshot: the facts that drift can narrow
@@ -52,10 +52,6 @@ module Frankenstein
 
         "\nNothing was written. Record this with `#{@record_with}` so later drift " \
           "has something to be measured against."
-      end
-
-      def count(collection, singular, plural)
-        "#{collection.size} #{(collection.size == 1) ? singular : plural}"
       end
     end
   end

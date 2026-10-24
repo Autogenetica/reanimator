@@ -31,7 +31,7 @@ module Frankenstein
           "Mode: read-only",
           "",
           "SELECTED FOR CONTINUOUS CARE",
-          "#{@baselines.size} repositor#{(@baselines.size == 1) ? "y" : "ies"}"
+          Reports.count(@baselines.size, "repository", "repositories")
         ].join("\n")
       end
 

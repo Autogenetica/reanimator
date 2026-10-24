@@ -25,5 +25,12 @@ module Frankenstein
     def status_label(status)
       status.to_s.tr("_", " ")
     end
+
+    # "1 repository" / "3 repositories". Every reporter needs to put a number
+    # in front of a noun, and each had grown its own spelling of it - which is
+    # how a user eventually reads "1 repositorys".
+    def count(size, singular, plural = "#{singular}s")
+      "#{size} #{(size == 1) ? singular : plural}"
+    end
   end
 end

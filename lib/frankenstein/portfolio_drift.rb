@@ -17,6 +17,33 @@ module Frankenstein
     # for that repository yet, which is a finding in its own right rather than
     # a quiet pass.
     Entry = Struct.new(:name, :report, :snapshot, :recorded_to, :error) do
+      # Compare one repository against whatever the store has on record. The
+      # entry builds itself because it is the thing that knows its own shape -
+      # both a portfolio scan and a single-repository run want exactly this.
+      #
+      # @param path [String] a repository root on disk
+      # @param store [SnapshotStore]
+      # @param record [Boolean] write the current snapshot after comparing
+      # @param intent [Symbol, nil]
+      # @return [Entry]
+      def self.for(path, store:, record: false, intent: nil)
+        repository = Repository.at(path)
+        repository.intent = intent if intent
+        current = ContractSnapshot.of(EffectivePolicyResolver.new(repository).resolve)
+        # Loaded before anything is written, so recording and comparing in one
+        # pass still compares against what was previously on record.
+        previous = store.load(repository)
+
+        new(
+          name: repository.full_name,
+          report: previous && DriftDetector.between(previous, current),
+          snapshot: current,
+          recorded_to: (store.save(current, repository) if record)
+        )
+      rescue Frankenstein::Error => e
+        new(name: File.basename(File.expand_path(path)), error: e.message)
+      end
+
       def failed? = !error.nil?
 
       def recorded? = !report.nil?
@@ -40,24 +67,8 @@ module Frankenstein
     # @param intent [Symbol, nil] override the inferred lifecycle intent
     # @return [PortfolioDrift]
     def self.scan(paths, store: SnapshotStore.new, record: false, intent: nil, name: "portfolio")
-      entries = Array(paths).map { |path| entry_for(path, store, record: record, intent: intent) }
+      entries = Array(paths).map { |path| Entry.for(path, store: store, record: record, intent: intent) }
       new(entries: entries, name: name, store: store)
-    end
-
-    def self.entry_for(path, store, record:, intent:)
-      repository = Repository.at(path)
-      repository.intent = intent if intent
-      current = ContractSnapshot.of(EffectivePolicyResolver.new(repository).resolve)
-      previous = store.load(repository)
-
-      Entry.new(
-        name: repository.full_name,
-        report: previous && DriftDetector.between(previous, current),
-        snapshot: current,
-        recorded_to: (store.save(current, repository) if record)
-      )
-    rescue Frankenstein::Error => e
-      Entry.new(name: File.basename(File.expand_path(path)), error: e.message)
     end
 
     attr_reader :entries, :name, :store, :generated_at

@@ -55,8 +55,8 @@ module Frankenstein
       def verdict
         return "No policy changes; nothing here needs a decision." unless @report.requires_review?
 
-        count = @report.policy_changes.size
-        "REVIEW REQUIRED: #{count} policy change#{"s" unless count == 1} — less is being proven than before."
+        changes = Reports.count(@report.policy_changes.size, "policy change")
+        "REVIEW REQUIRED: #{changes} — less is being proven than before."
       end
     end
   end

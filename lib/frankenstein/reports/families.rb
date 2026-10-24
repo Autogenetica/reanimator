@@ -20,7 +20,7 @@ module Frankenstein
 
       def header
         count = @families.size
-        "Repository families — #{count} famil#{(count == 1) ? "y" : "ies"} " \
+        "Repository families — #{Reports.count(count, "family", "families")} " \
           "(#{@families.sum(&:size)} repositories that must stay alive together)"
       end
 
