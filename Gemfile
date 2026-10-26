@@ -2,7 +2,7 @@
 
 source "https://rubygems.org"
 
-# Specify your gem's dependencies in frankenstein.gemspec
+# Specify your gem's dependencies in reanimator.gemspec
 gemspec
 
 gem "rake", "~> 13.0"

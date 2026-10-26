@@ -19,7 +19,7 @@ rule forbids a task from rewriting the rules of proof and passing under them.
   `Patch` (data), never applied by the agent.
 - Commissioning proves a profile ready/degraded/incompatible/unavailable by
   running the six-step test against a **disposable fixture** and grading it with
-  Frankenstein's own evaluators. The agent works in one copy; the harness applies
+  Reanimator's own evaluators. The agent works in one copy; the harness applies
   its patch to a **separate clean copy** and evaluates there — verifier isolation
   is structural, not a convention.
 - A patch whose paths are protected or out of scope is refused before it is ever

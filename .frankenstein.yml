@@ -1,8 +1,0 @@
-# Frankenstein stewards itself. This is the whole ordinary contract: one
-# lifecycle decision and one reusable profile. Everything else - the test,
-# lint, build, and support-matrix criteria - is discovered from the repository
-# and resolved against the safety floor. Run `frankenstein contract` to see the
-# fully materialized result, or `frankenstein baseline --execute` to prove it.
-version: 1
-intent: maintain
-profile: ruby-cli

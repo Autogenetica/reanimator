@@ -21,7 +21,7 @@ PR would violate the spec's own sequencing.
    escalates rather than proceeding,
 3. route to a ready agent, isolate a workspace copy, and take the agent's patch,
 4. reject any patch that touches a protected or out-of-scope path (anti-gaming),
-5. apply the patch to a *separate* clean copy and re-verify with Frankenstein's
+5. apply the patch to a *separate* clean copy and re-verify with Reanimator's
    own evaluators,
 6. only on independent success, materialize a `ProposedChange` (branch, patch,
    title, body) and record a `Run` with outcome `draft_pr`.
@@ -32,7 +32,7 @@ explicitly; it is intentionally not wired here.
 
 ## Consequences
 
-- The most eventful thing `frankenstein repair` can do is hand you a verified
+- The most eventful thing `reanimator repair` can do is hand you a verified
   patch and the draft PR it would open - safe to run anywhere, on anything.
 - Because verification reuses the same isolated-evaluation path as
   commissioning, a repair cannot pass by editing its own verifier.

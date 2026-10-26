@@ -13,7 +13,7 @@ exchanges a short-lived OIDC token at release time.
    | Field | Value |
    | --- | --- |
    | Repository owner | `codenamev` |
-   | Repository name | `frankenstein` |
+   | Repository name | `reanimator` |
    | Workflow filename | `release.yml` |
    | Environment | *(leave empty)* |
 
@@ -32,7 +32,7 @@ or leak — which is the point.
 
 1. Move the `[Unreleased]` entries in `CHANGELOG.md` under a new
    `## [X.Y.Z] - YYYY-MM-DD` heading, leaving `[Unreleased]` empty above it.
-2. Bump `Frankenstein::VERSION` in `lib/frankenstein/version.rb`.
+2. Bump `Reanimator::VERSION` in `lib/reanimator/version.rb`.
 3. Open a pull request with those two changes, get CI green, and merge it.
 4. Run the **Release** workflow from the Actions tab against `main`.
 

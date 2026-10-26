@@ -8,7 +8,7 @@
 Section 06 is "configuration by confirmation": the product should infer the
 majority of a repository contract and ask the user to *confirm facts rather than
 transcribe their own CI*. For that to be trustworthy, the UI "must always answer
-'Why does Frankenstein believe this?'" and must never let a low-confidence guess
+'Why does Reanimator believe this?'" and must never let a low-confidence guess
 silently become an obligation or authorize an action.
 
 ## Decision

@@ -29,7 +29,7 @@ in without reshaping the core.
 
 ## Consequences
 
-- Value lands immediately: `frankenstein baseline` proves a real gem is `ALIVE`
+- Value lands immediately: `reanimator baseline` proves a real gem is `ALIVE`
   with zero configuration and zero writes.
 - The riskiest capabilities (execution, merge) are gated behind explicit opt-in
   and a safety floor from day one, rather than retrofitted.

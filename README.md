@@ -1,11 +1,11 @@
-# Frankenstein
+# Reanimator
 
 **Turn repository intent into a verified, low-friction stewardship contract.**
 
-> The first successful Frankenstein run should prove something useful without
+> The first successful Reanimator run should prove something useful without
 > changing a single line of code.
 
-Frankenstein reads a repository, infers what *healthy* means for it, and proves
+Reanimator reads a repository, infers what *healthy* means for it, and proves
 that health **read-only** — before any coding agent or write permission is ever
 involved. It classifies lifecycle intent, discovers a vitality contract from
 evidence, resolves an effective policy against a non-bypassable safety floor,
@@ -21,13 +21,13 @@ to ship before building an autonomous surgeon.
 
 ```ruby
 # Gemfile
-gem "frankenstein"
+gem "reanimator"
 ```
 
 ```console
 $ bundle install
 # or, standalone:
-$ gem install frankenstein
+$ gem install reanimator
 ```
 
 Requires Ruby >= 3.3.
@@ -39,7 +39,7 @@ Every command is **read-only by default** and maps to an onboarding stage.
 ### 1. Classify before acting — `inventory`
 
 ```console
-$ frankenstein inventory ~/src/*
+$ reanimator inventory ~/src/*
 Portfolio inventory — 12 repositories
 Recommended for onboarding: agentic, claude_memory, eliza
 
@@ -49,13 +49,13 @@ Forks → suggest upstream:
   - langchainrb — The repository is a fork; defaulting to upstream observation.
 ```
 
-Frankenstein never preselects every repository — it recommends a small,
+Reanimator never preselects every repository — it recommends a small,
 high-confidence set that can reach a useful baseline quickly.
 
 ### 2. Find proof before asking for policy — `discover`
 
 ```console
-$ frankenstein discover
+$ reanimator discover
 Suggested profile: ruby-gem (high) — A gemspec indicates a published gem.
 
 ecosystem:
@@ -67,12 +67,12 @@ support matrix:
 ```
 
 Every discovered fact carries its **provenance and confidence**, so the tool can
-always answer *"Why does Frankenstein believe this?"*
+always answer *"Why does Reanimator believe this?"*
 
 ### 3. Review the effective contract — `contract`
 
 ```console
-$ frankenstein contract
+$ reanimator contract
 Effective contract — codenamev/widget
 Intent:   maintain (provisional)
 Profile:  ruby-gem (inferred) — A published Ruby gem: resolves, tests, lints, and builds.
@@ -88,14 +88,14 @@ Criteria (* = required):
     security-dependency-review: Dependency risk is reviewed automatically. — security_evidence
   ...
 Protected paths (elevated review to change):
-  - .frankenstein.yml
+  - .reanimator.yml
   - .github/workflows/**
 ```
 
-Export a minimal, round-trippable `.frankenstein.yml`:
+Export a minimal, round-trippable `.reanimator.yml`:
 
 ```console
-$ frankenstein contract --export
+$ reanimator contract --export
 version: 1
 intent: maintain
 profile: ruby-gem
@@ -106,7 +106,7 @@ profile: ruby-gem
 Read-only by default (native checks run; commands are *planned*):
 
 ```console
-$ frankenstein baseline
+$ reanimator baseline
 State:   UNPROVEN — A claim exists but sufficient executable evidence is absent or stale.
 Mode:    read-only (planned)
 ```
@@ -114,7 +114,7 @@ Mode:    read-only (planned)
 Opt in to bounded execution to actually prove life:
 
 ```console
-$ frankenstein baseline --execute
+$ reanimator baseline --execute
 State:   ALIVE — All due obligations have fresh passing evidence and no unapproved blocking risk.
 Mode:    executed (bounded, read-only)
 Verified Vitality Rate: 100% (3/3 required)
@@ -133,12 +133,12 @@ against a disposable fixture and graded independently — **without any reposito
 write**.
 
 ```console
-$ frankenstein agents
+$ reanimator agents
 Coding agents:
   ✓ local (available) [plan, patch, repository_edit, sandbox_exec]
   ◦ codex (unavailable) [...] — No credentials found (set OPENAI_ACCESS_TOKEN); connect the codex provider first.
 
-$ frankenstein commission
+$ reanimator commission
 Commissioning — local
 Readiness: READY
 Objective: arithmetic (at risk → alive)
@@ -147,7 +147,7 @@ A connected profile is proven ready. NO REPOSITORY WRITES WERE REQUIRED.
 ```
 
 The agent proposes a **patch as data**; the harness applies it to a separate,
-clean copy and grades it with Frankenstein's own evaluators. A patch that reaches
+clean copy and grades it with Reanimator's own evaluators. A patch that reaches
 for a protected or verifier path is refused — the anti-gaming rule, enforced.
 
 ### 6. Bounded repair — `repair`
@@ -157,18 +157,18 @@ independently** before anything is proposed. The result is a *draft PR
 artifact* — never a write, never a submission.
 
 ```console
-$ frankenstein repair            # on a healthy repo
+$ reanimator repair            # on a healthy repo
 Outcome:  NO-OP (healthy)
 
-$ frankenstein repair            # repair not yet enabled in the contract
+$ reanimator repair            # repair not yet enabled in the contract
 Outcome:  ESCALATION
 Reason:   Repair is not enabled for patch_dependency (max autonomy diagnose); enable repair to proceed.
 
-$ frankenstein repair            # repair enabled, a fixable failure present
+$ reanimator repair            # repair enabled, a fixable failure present
 Outcome:  DRAFT PR (proposed, not submitted)
 Evidence: at_risk → alive
 Proposed draft PR:
-  branch: frankenstein/repair-arithmetic-901cec8a
+  branch: reanimator/repair-arithmetic-901cec8a
   title:  Fix: add(2, 2) equals 4.
 NO SOURCE WAS WRITTEN TO THE REPOSITORY.
 ```
@@ -184,7 +184,7 @@ inferred from portfolio structure (a project and its `-examples` suite,
 `-example-*` deployment samples, `-docs`, or a `<host>-<project>` plugin):
 
 ```console
-$ frankenstein families ~/src/*
+$ reanimator families ~/src/*
 Repository families — 2 families (4 repositories that must stay alive together)
 
 agentic:
@@ -199,7 +199,7 @@ bounded, in a disposable copy, so an upstream change triggers downstream checks
 **without opening anything downstream**. A failure names the exact edge:
 
 ```console
-$ frankenstein gates ~/src/* --execute
+$ reanimator gates ~/src/* --execute
 Family gates — slimer
   ✗ slimer -> slimer-example-docker (deployment example) — bin/smoke failed.
 BROKEN EDGE: slimer -> slimer-example-docker (deployment example)
@@ -217,18 +217,18 @@ what its evidence resolves to now, and sorts every difference by one question:
 **is less being proven than before?**
 
 ```console
-$ frankenstein drift                       # what am I required to prove right now?
+$ reanimator drift                       # what am I required to prove right now?
 Contract snapshot — codenamev/widget
 Intent:   maintain   Profile: ruby-gem   Security: balanced posture
 Proves:   4 criteria (2 required)
 Evidence: runtimes 3.3, 3.4 · security gates dependabot
 
-Nothing was written. Record this with `frankenstein drift --record` so later drift has something to be measured against.
+Nothing was written. Record this with `reanimator drift --record` so later drift has something to be measured against.
 
-$ frankenstein drift --record
-Recorded contract snapshot for codenamev/widget → .frankenstein-snapshot.json
+$ reanimator drift --record
+Recorded contract snapshot for codenamev/widget → .reanimator-snapshot.json
 
-$ frankenstein drift                       # now there is something to compare against
+$ reanimator drift                       # now there is something to compare against
 Configuration drift — codenamev/widget
 
 Policy changes (review required) — 2
@@ -243,7 +243,7 @@ Benign changes — 1
 
 REVIEW REQUIRED: 2 policy changes — less is being proven than before.
 
-Intended? Re-record with: frankenstein drift --record
+Intended? Re-record with: reanimator drift --record
 ```
 
 A renamed test command is benign — the obligation did not move, only its
@@ -251,11 +251,11 @@ spelling. A narrowed matrix or a removed gate is a policy change nobody
 necessarily decided on, so it is never buried in the benign list. The command
 exits non-zero on policy drift, so CI can gate on it (and says how to accept
 drift you meant). The snapshot captures
-*discovered* evidence too — drift that never touches `.frankenstein.yml` is
+*discovered* evidence too — drift that never touches `.reanimator.yml` is
 still caught.
 
 The snapshot lives **in the repository**, committed as
-`.frankenstein-snapshot.json` beside `.frankenstein.yml`. That is deliberate:
+`.reanimator-snapshot.json` beside `.reanimator.yml`. That is deliberate:
 the contract and the record of what it last required are the same kind of
 thing, and keeping both under review means a policy change arrives as a diff in
 a pull request rather than as state hidden inside a tool.
@@ -266,8 +266,8 @@ Pass several paths and drift becomes a triage list. Each repository is compared
 against its own snapshot, and one unreadable member never stops the rest:
 
 ```console
-$ frankenstein drift ~/src/*
-FRANKENSTEIN DRIFT
+$ reanimator drift ~/src/*
+REANIMATOR DRIFT
 Portfolio: portfolio
 Mode: read-only
 
@@ -291,7 +291,7 @@ NOT RECORDED — 1 repository
     nothing to compare against yet
 
 REVIEW REQUIRED: 1 policy change across 1 repository — less is being proven than before.
-Intended? Re-record with: frankenstein drift --record
+Intended? Re-record with: reanimator drift --record
 
 NO FILES WERE WRITTEN. NO SOURCE CHANGES WERE MADE.
 ```
@@ -300,7 +300,7 @@ For repositories you cannot commit a file into, `--snapshots DIR` keeps them
 side by side keyed by repository instead:
 
 ```console
-$ frankenstein drift ~/src/* --snapshots ~/.frankenstein/snapshots --record
+$ reanimator drift ~/src/* --snapshots ~/.reanimator/snapshots --record
 ```
 
 Three outcomes are deliberately distinct. A repository with **nothing
@@ -316,7 +316,7 @@ The posture is a named decision with consequences, not a label. It decides how
 much security evidence a repository has to show; the project's shape does not.
 
 ```yaml
-# .frankenstein.yml
+# .reanimator.yml
 version: 1
 intent: maintain
 profile: ruby-gem
@@ -349,7 +349,7 @@ security evidence is **Unproven**, not Alive. When the gap is a deliberate,
 tracked decision, accept it with a waiver rather than weakening the posture.
 
 `custom` implies nothing in either direction: "no hidden relaxation from a
-preset" means Frankenstein adds no control you did not ask for, either.
+preset" means Reanimator adds no control you did not ask for, either.
 
 ### Accepted risk — waivers
 
@@ -358,7 +358,7 @@ records it as **accepted risk** — visible, attributable, and kept out of the
 vitality rate — without pretending it passed:
 
 ```yaml
-# .frankenstein.yml
+# .reanimator.yml
 version: 1
 intent: maintain
 profile: ruby-gem
@@ -375,7 +375,7 @@ expired waiver stops applying and the obligation is blocking again.
 ### Resolved autonomy — `permissions`
 
 ```console
-$ frankenstein permissions
+$ reanimator permissions
 Permissions — codenamev/widget (autonomy: observe=automatic diagnose=automatic repair=disabled …)
   Patch dependency update: max=diagnose | observe=auto diagnose=auto repair=off submit=off merge=off …
   CI or verifier modification: max=diagnose | … [elevated review]
@@ -388,8 +388,8 @@ clamps to diagnose; merge is always off in v1.
 ### The portfolio baseline (Appendix A)
 
 ```console
-$ frankenstein portfolio ~/src/* --name codenamev
-FRANKENSTEIN BASELINE
+$ reanimator portfolio ~/src/* --name codenamev
+REANIMATOR BASELINE
 Portfolio: codenamev
 Mode: read-only
 
@@ -408,17 +408,17 @@ No coding agent was required.
 The CLI is a thin shell over a plain Ruby API — the same "80% path" in one call:
 
 ```ruby
-require "frankenstein"
+require "reanimator"
 
-Frankenstein.inventory(paths)          #=> Frankenstein::Portfolio
-Frankenstein.discover(path)            #=> Frankenstein::DiscoveryResult
-Frankenstein.contract(path)            #=> Frankenstein::EffectiveContract
-Frankenstein.baseline(path, execute: true) #=> Frankenstein::Baseline
-Frankenstein.snapshot(path)            #=> Frankenstein::ContractSnapshot
-Frankenstein.drift(path, since: file)  #=> Frankenstein::DriftReport
-Frankenstein.portfolio_drift(paths)    #=> Frankenstein::PortfolioDrift
+Reanimator.inventory(paths)          #=> Reanimator::Portfolio
+Reanimator.discover(path)            #=> Reanimator::DiscoveryResult
+Reanimator.contract(path)            #=> Reanimator::EffectiveContract
+Reanimator.baseline(path, execute: true) #=> Reanimator::Baseline
+Reanimator.snapshot(path)            #=> Reanimator::ContractSnapshot
+Reanimator.drift(path, since: file)  #=> Reanimator::DriftReport
+Reanimator.portfolio_drift(paths)    #=> Reanimator::PortfolioDrift
 
-baseline = Frankenstein.baseline(".")
+baseline = Reanimator.baseline(".")
 baseline.state.to_sym                  #=> :unproven
 baseline.verified_vitality_rate        #=> 0.0
 baseline.to_h                          # fully serializable

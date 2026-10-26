@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "frankenstein"
+require "reanimator"
 require "timecop"
 require "tmpdir"
 require "fileutils"
@@ -30,6 +30,6 @@ RSpec.configure do |config|
 
   # Keep configuration hermetic: reset any per-test overrides.
   config.after do
-    Frankenstein.configuration = nil
+    Reanimator.configuration = nil
   end
 end

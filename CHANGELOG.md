@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The product is now Reanimator** (ADR-006). The gem name `frankenstein` is
+  held on RubyGems by an actively downloaded Prometheus library, so 0.1.0 could
+  not ship under it — but the better reason is that Frankenstein names a single
+  dramatic act of revival, and this tool does something else: it proves,
+  continuously and read-only, that a repository has not quietly rotted. Gem
+  `reanimator`, module `Reanimator`, command `reanimator`, contract file
+  `.reanimator.yml`, snapshot file `.reanimator-snapshot.json`, environment
+  variables `REANIMATOR_*`. Nothing is published yet, so no existing
+  installation or contract file is affected.
+
 ### Added
 
 - Security posture enforcement (section 12). The posture was a label; it is now
@@ -26,24 +38,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   execution, and reports a gap as *missing evidence* with the remedy attached
   rather than as a silent pass. Before this, a repository with no security gate
   at all could read **Alive at 100%**: nothing in the contract ever asked.
-- `frankenstein contract` now states the posture in plain language and lists
+- `reanimator contract` now states the posture in plain language and lists
   exactly which controls it requires and which it merely reports. Section 12
   asks for security to be part of onboarding rather than a hidden settings page.
 - Portfolio drift (section 06 applied to the portfolio of section 04).
-  `frankenstein drift` now takes several paths and returns a triage list rather
+  `reanimator drift` now takes several paths and returns a triage list rather
   than one verdict: repositories needing a human first, with the reason for each
   policy change; then repositories that merely changed; then the unchanged; then
   the ones with nothing recorded. `PortfolioDrift` is the value object,
-  `Frankenstein.portfolio_drift(paths)` the library call, and the exit status is
+  `Reanimator.portfolio_drift(paths)` the library call, and the exit status is
   still non-zero only when something actually needs a decision.
 - `SnapshotStore` decides where a repository's recorded snapshot lives, and is
   the only thing that writes one. The default is **in the repository**,
-  committed as `.frankenstein-snapshot.json` beside `.frankenstein.yml`, so a
+  committed as `.reanimator-snapshot.json` beside `.reanimator.yml`, so a
   policy change arrives as a diff in a pull request rather than as state hidden
   inside a tool. `--snapshots DIR` keeps them portfolio-side, keyed by
   repository, for repositories you cannot commit a file into.
-- `frankenstein drift --record` writes the snapshot where it belongs, so neither
-  recording nor comparing needs a remembered path any more: `frankenstein drift`
+- `reanimator drift --record` writes the snapshot where it belongs, so neither
+  recording nor comparing needs a remembered path any more: `reanimator drift`
   on its own now compares against the committed snapshot when there is one. The
   reports name the command that re-records *this* snapshot rather than a
   generic `--save FILE`.
@@ -56,8 +68,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   grant or a fresh waiver are **policy changes** and ask for a human; a renamed
   test command, an added check or a withdrawn waiver are **benign** and do not
   interrupt anyone. The snapshot carries discovered evidence as well as the
-  declared file, so drift that never touches `.frankenstein.yml` is still seen.
-- CLI: `frankenstein drift [--since FILE] [--save FILE]`, exiting non-zero on a
+  declared file, so drift that never touches `.reanimator.yml` is still seen.
+- CLI: `reanimator drift [--since FILE] [--save FILE]`, exiting non-zero on a
   policy change so CI can gate on it. The only file written is the one named
   with `--save`.
 
@@ -73,10 +85,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   disposable copy - a candidate change upstream triggers downstream checks
   without opening anything downstream. A failure names **the exact edge that
   broke**, not merely the repository that ran.
-- CLI: `frankenstein families` and `frankenstein gates [--execute] [--family ID]`.
+- CLI: `reanimator families` and `reanimator gates [--execute] [--family ID]`.
 
 - Waivers (section 09): explicit, attributable, optionally time-bounded
-  exceptions declared in `.frankenstein.yml`. A waived required criterion is
+  exceptions declared in `.reanimator.yml`. A waived required criterion is
   recorded as **accepted risk** — not counted as verified, kept out of the
   Verified Vitality Rate, and no longer blocking — while an expired waiver
   fails closed. `Waiver`, `EffectiveContract#waiver_for`,
@@ -93,21 +105,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `EffectivePolicyResolver` and a non-bypassable `SafetyFloor` implementing the
   section 07 precedence rules (owner declaration wins; nothing loosens the
   floor; merge disabled in v1).
-- `.frankenstein.yml` reader/writer with lossless round-trip.
+- `.reanimator.yml` reader/writer with lossless round-trip.
 - Baseline runner with isolated evaluators (command, http-smoke, repository
   integrity, documentation, support matrix), bounded/opt-in execution, and
   proof-of-life assessment.
 - Reporters mirroring the specification artifacts: the GitHub Check surface, the
   full baseline report, the Appendix A portfolio baseline, discovery, contract,
   and inventory.
-- A Thor CLI (`frankenstein inventory|discover|contract|baseline|portfolio`).
+- A Thor CLI (`reanimator inventory|discover|contract|baseline|portfolio`).
 - Coding-agent adapters (section 08): a portable `Agents::Adapter` contract, a
   fully working local rule-based agent, and honest hosted-provider stubs
   (Codex/Claude/Amp) that report themselves unavailable until connected.
 - Account/organization `AgentConnection` (credentials referenced, never stored)
   and `AgentProfile` with a commissioned readiness verdict.
 - Commissioning: a six-step synthetic repair against a disposable fixture,
-  graded independently by Frankenstein's own evaluators, with verifier
+  graded independently by Reanimator's own evaluators, with verifier
   isolation and anti-gaming (a patch that touches a protected/verifier path is
   refused) enforced structurally.
 - Routing (`Routing::Router`): auto, pinned, ordered, task-routed, local-only,
@@ -116,7 +128,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Autonomy ladder and permission model (section 11): `AutonomyLevel`,
   `TaskClass` defaults, and `PermissionModel` that intersects task-class
   defaults with the repository's enabled autonomy and the safety floor.
-- CLI additions: `frankenstein agents|commission|permissions`.
+- CLI additions: `reanimator agents|commission|permissions`.
 - Bounded repair (sections 11, 13, 17): `RepairRun` orchestrates baseline →
   obligation → permission check → routing → isolated agent repair → independent
   re-verification → a materialized `ProposedChange` (draft PR), recorded as an
@@ -124,7 +136,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   proposed draft PR is an artifact, and submission is a separate, opt-in step.
 - `Obligation` (idempotent, deduplicated), `ProposedChange`, `Run` (section 17
   ledger), and an `Isolation` disposable-workspace helper.
-- CLI addition: `frankenstein repair`.
+- CLI addition: `reanimator repair`.
 
 ### Fixed
 
@@ -146,7 +158,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - One unreadable repository no longer ends a portfolio run; it becomes a failed
   entry and every other member still reports.
 
-- `frankenstein drift --format text` now prints text. With no `--since` it
+- `reanimator drift --format text` now prints text. With no `--since` it
   described the repository's current obligations in prose instead of emitting
   JSON, which contradicted its own `--format` flag; `--format json` is
   unchanged for machine use.
