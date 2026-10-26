@@ -474,6 +474,8 @@ $ bundle exec rake   # run specs and StandardRB
 $ bin/console        # an IRB session with the gem loaded
 ```
 
+Releases are manual and credential-free — see [RELEASING.md](RELEASING.md).
+
 ## License
 
 Released under the [MIT License](LICENSE.txt).
