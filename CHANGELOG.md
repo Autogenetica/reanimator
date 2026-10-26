@@ -8,6 +8,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Security posture enforcement (section 12). The posture was a label; it is now
+  a decision with consequences. `SecurityControl` registers the controls a
+  posture can require - dependency review, secret scanning, static analysis,
+  security policy, ownership - each named by **obligation rather than tool**, so
+  Dependabot, `bundler-audit` and `actions/dependency-review-action` all satisfy
+  "dependency risk is reviewed" and a repository that already solved the problem
+  its own way is credited instead of asked to adopt ours.
+  `SecurityPosture#obligations` says which controls each posture makes binding:
+  `strict` blocks without a security policy, dependency review and secret
+  scanning; `local` blocks without secret scanning, because committed secrets
+  are the one risk that does not care whose runner it is; `balanced` reports the
+  same gaps without blocking; `custom` implies nothing, because "no hidden
+  relaxation from a preset" cuts both ways.
+- `Evaluators::SecurityEvidence`, a native evaluator that grades one control
+  from discovered evidence - so it runs in the read-only default, with no
+  execution, and reports a gap as *missing evidence* with the remedy attached
+  rather than as a silent pass. Before this, a repository with no security gate
+  at all could read **Alive at 100%**: nothing in the contract ever asked.
+- `frankenstein contract` now states the posture in plain language and lists
+  exactly which controls it requires and which it merely reports. Section 12
+  asks for security to be part of onboarding rather than a hidden settings page.
 - Portfolio drift (section 06 applied to the portfolio of section 04).
   `frankenstein drift` now takes several paths and returns a triage list rather
   than one verdict: repositories needing a human first, with the reason for each
@@ -107,6 +128,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A criterion whose evaluator **errored** no longer reads as proof. `:error` was
+  neither "failed" nor "unproven", so a required check that could not be
+  evaluated left the repository green - the one outcome a verifier must never
+  produce. "We could not tell" is now unproven.
+- The layers that contribute obligations - profile defaults, posture security
+  controls, owner declarations - are merged by criterion id instead of
+  concatenated, so a declared check *replaces* the default it names rather than
+  appearing twice alongside it. Precedence follows section 07: the owner's
+  declaration wins.
 - A portfolio drift run fails closed on a snapshot it cannot read. An
   unreadable or corrupt snapshot is reported as needing review rather than
   counted among the quiet repositories - "we could not tell" is not "nothing

@@ -15,6 +15,25 @@ module Frankenstein
       custom: "Explicit controls with no hidden relaxation from a preset."
     }.freeze
 
+    # What each posture makes mandatory (section 12). The posture - not the
+    # project's shape - decides how much security proof a repository must show,
+    # so the same gem is advisory under :balanced and blocking under :strict.
+    # A control absent from a posture's map is not asked for at all.
+    #
+    # :local requires secret scanning because committed secrets are the one
+    # risk that does not care whether the runner is yours. :custom implies
+    # nothing: "no hidden relaxation from a preset" cuts both ways, so the
+    # owner declares the controls they want and Frankenstein adds none.
+    OBLIGATIONS = {
+      strict: {
+        security_policy: true, dependency_review: true, secret_scanning: true,
+        static_analysis: false, ownership: false
+      },
+      balanced: {dependency_review: false, secret_scanning: false, security_policy: false},
+      local: {secret_scanning: true, dependency_review: false},
+      custom: {}
+    }.freeze
+
     attr_reader :name
 
     def initialize(name)
@@ -43,6 +62,16 @@ module Frankenstein
       else :custom
       end
     end
+
+    # @return [Hash{Symbol=>Boolean}] security control id => whether a missing
+    #   control blocks advancement under this posture
+    def obligations = OBLIGATIONS.fetch(name)
+
+    # @return [Array<Symbol>] controls whose absence blocks
+    def required_controls = obligations.select { |_, required| required }.keys
+
+    # @return [Array<Symbol>] controls reported but not blocking
+    def advisory_controls = obligations.reject { |_, required| required }.keys
 
     def to_sym = name
 

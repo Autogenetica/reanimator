@@ -76,11 +76,16 @@ $ frankenstein contract
 Effective contract — codenamev/widget
 Intent:   maintain (provisional)
 Profile:  ruby-gem (inferred) — A published Ruby gem: resolves, tests, lints, and builds.
-Security: balanced posture
 Autonomy: observe=automatic  diagnose=automatic  repair=disabled  submit=disabled  merge=disabled
+
+Security posture: balanced
+  Approved package-registry network, hosted agents allowed, patch submission permitted, no major automatic repair.
+  Required: none
+  Advisory: dependency review, secret scanning, security policy
 
 Criteria (* = required):
   * tests: Test suite passes. — bundle exec rspec
+    security-dependency-review: Dependency risk is reviewed automatically. — security_evidence
   ...
 Protected paths (elevated review to change):
   - .frankenstein.yml
@@ -305,6 +310,47 @@ read** does fail it: "we could not tell" is not "nothing changed", and
 corrupting a snapshot must never be a way to pass. Benign change never fails
 it at all.
 
+### Security posture — what it actually binds
+
+The posture is a named decision with consequences, not a label. It decides how
+much security evidence a repository has to show; the project's shape does not.
+
+```yaml
+# .frankenstein.yml
+version: 1
+intent: maintain
+profile: ruby-gem
+security:
+  posture: strict      # strict | balanced | local | custom
+```
+
+| Posture | Blocks without evidence | Reported, not blocking |
+| --- | --- | --- |
+| `strict` (default for private repositories) | security policy, dependency review, secret scanning | static analysis, ownership |
+| `balanced` (default for public repositories) | — | dependency review, secret scanning, security policy |
+| `local` | secret scanning | dependency review |
+| `custom` | — | — |
+
+Controls are named by **obligation, not by tool**: "dependency risk is reviewed"
+is satisfied by Dependabot, `bundler-audit`, or `actions/dependency-review-action`
+alike, so a repository that already solved the problem its own way is credited
+rather than asked to adopt ours. A control with no evidence is reported as
+*missing evidence* with the remedy attached — never as a silent pass:
+
+```console
+  •  security-secret-scanning: Committed secrets are scanned for.
+     — No secret scanning found. Add gitleaks or trufflehog to CI.
+  ✓  security-policy: A security policy says how to report a vulnerability.
+     — A security policy is published (SECURITY.md).
+```
+
+Under `strict` and `local` those gaps are blocking, so a repository with no
+security evidence is **Unproven**, not Alive. When the gap is a deliberate,
+tracked decision, accept it with a waiver rather than weakening the posture.
+
+`custom` implies nothing in either direction: "no hidden relaxation from a
+preset" means Frankenstein adds no control you did not ask for, either.
+
 ### Accepted risk — waivers
 
 Sometimes a known failure is a deliberate, tracked decision, not a gap. A waiver
@@ -413,7 +459,7 @@ Two rules are **enforced**, not just documented:
 | 13 / 17 Bounded repair & run ledger | ✅ `RepairRun`, `Obligation`, `ProposedChange`, `Run` (no writes) |
 | 18 MVP slices 1–4 | ✅ Inventory→baseline→commissioning→bounded repair |
 | 10 Repository families & compatibility graphs | ✅ `Relationship`, `Family`, `FamilyInference`, `Family::GateRunner` |
-| 12 Security controls | ⏳ Modeled; enforcement expands with submission |
+| 12 Security controls | ✅ `SecurityControl`, `SecurityPosture#obligations`, `Evaluators::SecurityEvidence` (network egress still advisory) |
 | Draft-PR *submission* to GitHub | ⏳ Deliberate opt-in; artifact is ready, the write is not wired |
 | GitHub App, web UI | ⏳ Explicitly later (spec sections 03, 18) |
 

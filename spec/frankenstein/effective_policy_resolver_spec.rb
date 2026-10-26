@@ -83,6 +83,59 @@ RSpec.describe Frankenstein::EffectivePolicyResolver do
     end
   end
 
+  describe "merging the layers that contribute obligations" do
+    it "lets an owner declaration replace a criterion the posture supplied" do
+      contract = resolve(files: {".frankenstein.yml" => <<~YAML})
+        version: 1
+        intent: maintain
+        profile: generic
+        security:
+          posture: local
+        acceptance:
+          checks:
+            - id: security-secret-scanning
+              claim: "our own scanner runs in the pre-commit hook"
+              run: "bin/scan-secrets"
+      YAML
+      matching = contract.criteria.select { |c| c.id == :"security-secret-scanning" }
+
+      expect(matching.size).to eq(1)
+      expect(matching.first.evaluator).to eq(:command)
+      expect(matching.first.owner).to eq("repository")
+    end
+
+    it "lets an owner declaration replace a profile default rather than duplicating it" do
+      contract = resolve(files: {
+        "Gemfile" => "gemspec\n", "widget.gemspec" => "x",
+        ".frankenstein.yml" => <<~YAML
+          version: 1
+          intent: maintain
+          profile: ruby-gem
+          acceptance:
+            checks:
+              - id: tests
+                claim: "the suite passes under our runner"
+                run: "bin/test"
+        YAML
+      })
+      matching = contract.criteria.select { |c| c.id == :tests }
+
+      expect(matching.size).to eq(1)
+      expect(matching.first.run).to eq("bin/test")
+    end
+
+    it "adds the posture's security obligations to whatever the profile already asks for" do
+      contract = resolve(files: {
+        "Gemfile" => "gemspec\n", "widget.gemspec" => "x",
+        ".frankenstein.yml" => "version: 1\nintent: maintain\nprofile: ruby-gem\nsecurity:\n  posture: strict\n"
+      })
+      ids = contract.criteria.map(&:id)
+
+      expect(ids).to include(:tests, :build)
+      expect(ids).to include(:"security-policy", :"security-dependency-review", :"security-secret-scanning")
+    end
+  end
+
   it "produces a stable policy version fingerprint" do
     files = {"Gemfile" => "gemspec\n", "widget.gemspec" => "x"}
     a = described_class.new(Frankenstein::Repository.at(make_repo(files: files))).resolve
