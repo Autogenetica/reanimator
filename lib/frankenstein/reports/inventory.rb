@@ -20,7 +20,7 @@ module Frankenstein
       def header
         recommended = @portfolio.recommended.map(&:name)
         [
-          "Portfolio inventory — #{@portfolio.size} repositor#{(@portfolio.size == 1) ? "y" : "ies"}",
+          "Portfolio inventory — #{Reports.count(@portfolio.size, "repository", "repositories")}",
           "Recommended for onboarding: #{recommended.empty? ? "(none yet)" : recommended.join(", ")}"
         ].join("\n")
       end

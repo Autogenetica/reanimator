@@ -52,6 +52,32 @@ RSpec.describe "reports" do
       expect(out).to include("Recommended for onboarding:")
     end
   end
+
+  # Section 12: the posture is part of onboarding, not a hidden settings page,
+  # so the contract has to say in words what it makes binding.
+  describe Frankenstein::Reports::Contract do
+    it "names the posture, explains it, and lists exactly what it requires" do
+      path = make_repo(files: {
+        "README.md" => "# widget",
+        ".frankenstein.yml" => "version: 1\nintent: maintain\nprofile: generic\nsecurity:\n  posture: strict\n"
+      })
+      contract = Frankenstein::EffectivePolicyResolver.new(Frankenstein::Repository.at(path)).resolve
+
+      out = described_class.new(contract).render
+
+      expect(out).to include("Security posture: strict")
+      expect(out).to include("deny-by-default network and secrets")
+      expect(out).to include("Required: security policy, dependency review, secret scanning")
+      expect(out).to include("Advisory: static analysis, ownership")
+    end
+
+    it "says plainly when a posture requires nothing, rather than leaving the line blank" do
+      path = make_repo(files: {".frankenstein.yml" => "version: 1\nintent: maintain\nprofile: generic\n"})
+      contract = Frankenstein::EffectivePolicyResolver.new(Frankenstein::Repository.at(path)).resolve
+
+      expect(described_class.new(contract).render).to include("Required: none")
+    end
+  end
 end
 
 RSpec.describe "drift reporting" do
@@ -81,7 +107,7 @@ RSpec.describe "drift reporting" do
 
     expect(rendered).to include("Contract snapshot —")
     expect(rendered).to match(/Proves:\s+\d+ criteri/)
-    expect(rendered).to include("Record this with --save FILE")
+    expect(rendered).to include("Record this with `frankenstein drift --record`")
     expect(rendered).not_to include("{")
   end
 
@@ -89,7 +115,7 @@ RSpec.describe "drift reporting" do
     rendered = Frankenstein::Reports::Snapshot.new(snapshot_for(declared), saved_to: "snap.json").render
 
     expect(rendered).to include("Recorded to snap.json")
-    expect(rendered).to include("frankenstein drift --since snap.json")
+    expect(rendered).to include("Compare later with: frankenstein drift")
   end
 
   it "reads the same whether the snapshot is fresh or loaded from disk" do
@@ -110,8 +136,63 @@ RSpec.describe "drift reporting" do
     File.write(File.join(path, ".frankenstein.yml"), declared[".frankenstein.yml"].sub("required: true", "required: false"))
     report = Frankenstein::DriftDetector.between(before, resolve.call)
 
-    rendered = Frankenstein::Reports::Drift.new(report, recorded_in: "snap.json").render
+    rendered = Frankenstein::Reports::Drift.new(report, record_with: "frankenstein drift --save snap.json").render
     expect(rendered).to include("REVIEW REQUIRED")
     expect(rendered).to include("frankenstein drift --save snap.json")
+  end
+end
+
+PF_FILES = {
+  "README.md" => "# x",
+  "Gemfile" => "gemspec\n",
+  "widget.gemspec" => "x",
+  ".frankenstein.yml" => "version: 1\nintent: maintain\nprofile: ruby-gem\n"
+}.freeze
+
+RSpec.describe Frankenstein::Reports::PortfolioDrift do
+  def rendered(paths, **kwargs)
+    described_class.new(Frankenstein.portfolio_drift(paths, **kwargs)).render
+  end
+
+  it "leads with the repositories that need a human and says why each change matters" do
+    widened, renamed, steady = make_portfolio("widened" => PF_FILES, "renamed" => PF_FILES, "steady" => PF_FILES)
+    paths = [widened, renamed, steady]
+    Frankenstein.portfolio_drift(paths, record: true)
+    File.write(File.join(widened, ".frankenstein.yml"),
+      "version: 1\nintent: maintain\nprofile: ruby-gem\nautonomy:\n  repair: automatic\n")
+    File.write(File.join(renamed, ".rspec"), "--color\n")
+
+    out = rendered(paths)
+
+    expect(out.index("REVIEW REQUIRED — 1 repository")).to be < out.index("CHANGED, BENIGN")
+    expect(out).to include("Autonomy was widened")
+    expect(out).to include("UNCHANGED — 1 repository")
+    expect(out).to include("Intended? Re-record with: frankenstein drift --record")
+  end
+
+  it "says plainly that nothing needs a decision when nothing drifted" do
+    paths = make_portfolio("steady" => PF_FILES)
+    Frankenstein.portfolio_drift(paths, record: true)
+
+    expect(rendered(paths)).to include("nothing here needs a decision")
+  end
+
+  # The read-only promise, stated precisely rather than generously: recording
+  # writes snapshot files, so the footer says which it actually did.
+  it "distinguishes writing nothing from writing snapshots" do
+    paths = make_portfolio("widget" => PF_FILES)
+
+    expect(rendered(paths)).to include("NO FILES WERE WRITTEN. NO SOURCE CHANGES WERE MADE.")
+    expect(rendered(paths, record: true)).to include("Recorded 1 snapshot. NO SOURCE CHANGES WERE MADE.")
+  end
+
+  it "calls an unreadable snapshot out as review required, not as a quiet pass" do
+    paths = make_portfolio("broken" => PF_FILES)
+    File.write(File.join(paths.first, ".frankenstein-snapshot.json"), "not json")
+
+    out = rendered(paths)
+
+    expect(out).to include("COULD NOT READ — 1 repository")
+    expect(out).to include("so drift could not be ruled out there")
   end
 end

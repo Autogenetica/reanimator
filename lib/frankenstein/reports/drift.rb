@@ -6,9 +6,9 @@ module Frankenstein
     # change never blur together: policy changes come first, under a heading
     # that says a human is needed, and benign changes follow as information.
     class Drift
-      def initialize(report, recorded_in: nil)
+      def initialize(report, record_with: "frankenstein drift --record")
         @report = report
-        @recorded_in = recorded_in
+        @record_with = record_with
       end
 
       def render
@@ -49,14 +49,14 @@ module Frankenstein
       # drift they meant to introduce; the report is the only place they are
       # looking.
       def next_step
-        "Intended? Re-record with: frankenstein drift --save #{@recorded_in || "FILE"}"
+        "Intended? Re-record with: #{@record_with}"
       end
 
       def verdict
         return "No policy changes; nothing here needs a decision." unless @report.requires_review?
 
-        count = @report.policy_changes.size
-        "REVIEW REQUIRED: #{count} policy change#{"s" unless count == 1} — less is being proven than before."
+        changes = Reports.count(@report.policy_changes.size, "policy change")
+        "REVIEW REQUIRED: #{changes} — less is being proven than before."
       end
     end
   end

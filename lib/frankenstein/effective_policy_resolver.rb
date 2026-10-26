@@ -34,6 +34,7 @@ module Frankenstein
       intent, intent_confirmed = resolve_intent
       profile, profile_source = resolve_profile(intent)
       autonomy, autonomy_notes = SafetyFloor.clamp_autonomy(resolve_autonomy)
+      posture = resolve_security_posture
 
       EffectiveContract.new(
         repository: repository,
@@ -41,9 +42,11 @@ module Frankenstein
         intent_confirmed: intent_confirmed,
         profile: profile,
         profile_source: profile_source,
-        criteria: build_criteria(profile),
+        criteria: CriteriaStack.new(
+          profile: profile, posture: posture, discovery: discovery, declared: declared
+        ).resolve,
         discovery: discovery,
-        security_posture: resolve_security_posture,
+        security_posture: posture,
         autonomy: autonomy,
         protected_paths: SafetyFloor.protected_paths(declared_protected_paths),
         waivers: build_waivers,
@@ -78,45 +81,6 @@ module Frankenstein
         id = discovery.suggested_profile
         id = :"rails-legacy" if id == :"rails-app" && intent.to_sym == :preserve
         [Profiles.fetch(id), :inferred]
-      end
-    end
-
-    # Profile criteria, with discovered commands substituted in for the
-    # matching defaults (section 00: reuse detected checks; surface missing
-    # proof), plus any checks the owner declared.
-    def build_criteria(profile)
-      commands = discovery.discovered_commands
-      base = profile.resolved_criteria.map do |criterion|
-        run = commands[criterion.id]
-        run ? with_run(criterion, run) : criterion
-      end
-      base + declared_criteria
-    end
-
-    def with_run(criterion, run)
-      AcceptanceCriterion.new(
-        id: criterion.id, claim: criterion.claim, evaluator: criterion.evaluator,
-        run: run, target: criterion.target, required: criterion.required,
-        scope: criterion.scope, freshness: criterion.freshness, owner: criterion.owner,
-        risk_class: criterion.risk_class,
-        provenance: discovery.command_fact(criterion.id)&.provenance
-      )
-    end
-
-    # Owner-declared acceptance checks become criteria owned by the repository.
-    # A criterion that edits CI/verifier surfaces is elevated by policy.
-    def declared_criteria
-      checks = declared&.acceptance&.dig(:checks) || []
-      checks.map do |check|
-        AcceptanceCriterion.new(
-          id: check[:id] || "declared-#{check.object_id}",
-          claim: check[:claim] || "Owner-declared check #{check[:id]}.",
-          evaluator: check[:evaluator] || :command,
-          run: check[:run], target: check[:target],
-          required: check.fetch(:required, true),
-          owner: "repository",
-          risk_class: check[:risk_class] || :normal
-        )
       end
     end
 

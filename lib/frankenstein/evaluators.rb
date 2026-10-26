@@ -6,7 +6,8 @@ module Frankenstein
   # fail is deliberately separate from anything that could edit the repository.
   #
   # Two families live here. *Native* evaluators (repository integrity,
-  # documentation, support matrix) read only inspection data and always run,
+  # documentation, support matrix, security evidence) read only inspection
+  # data and always run,
   # even in the non-executing default - that is how a read-only baseline can
   # still prove something. *Command* and *smoke* evaluators represent work that
   # must actually execute, so they only run when a baseline is explicitly asked
@@ -32,7 +33,8 @@ module Frankenstein
         http_smoke: HttpSmoke,
         repository_integrity: RepositoryIntegrity,
         documentation_check: DocumentationCheck,
-        support_matrix: SupportMatrix
+        support_matrix: SupportMatrix,
+        security_evidence: SecurityEvidence
       }
     end
   end
