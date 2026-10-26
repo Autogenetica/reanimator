@@ -11,7 +11,7 @@ module RepositoryFixture
   # @param upstream [String, nil] add an "upstream" remote with this URL
   # @return [String] absolute path to the fixture
   def make_repo(files: {}, git: false, upstream: nil)
-    dir = Dir.mktmpdir("frankenstein-spec")
+    dir = Dir.mktmpdir("reanimator-spec")
     (@fixture_dirs ||= []) << dir
 
     files.each do |relative, contents|
@@ -24,9 +24,9 @@ module RepositoryFixture
     dir
   end
 
-  # Builds a fixture and returns a loaded {Frankenstein::Repository}.
+  # Builds a fixture and returns a loaded {Reanimator::Repository}.
   def make_repository(**kwargs)
-    Frankenstein::Repository.at(make_repo(**kwargs))
+    Reanimator::Repository.at(make_repo(**kwargs))
   end
 
   # Creates a directory of *named* repositories under one parent, returning
@@ -36,7 +36,7 @@ module RepositoryFixture
   # @param repositories [Hash{String=>Hash}] name => (relative path => contents)
   # @return [Array<String>] absolute paths
   def make_portfolio(repositories)
-    root = Dir.mktmpdir("frankenstein-portfolio")
+    root = Dir.mktmpdir("reanimator-portfolio")
     (@fixture_dirs ||= []) << root
 
     repositories.map do |name, files|

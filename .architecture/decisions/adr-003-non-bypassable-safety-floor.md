@@ -18,7 +18,7 @@ applies it last, after owner declarations and discovery:
 
 - Merge autonomy is clamped to `disabled` in v1 regardless of what any layer
   requests, and the clamp is **recorded as a visible note**, never hidden.
-- Protected paths (`.frankenstein.yml`, `.github/workflows/**`, CODEOWNERS,
+- Protected paths (`.reanimator.yml`, `.github/workflows/**`, CODEOWNERS,
   Dependabot config) are always present; a contract may add to the set but the
   union always includes the floor.
 - Verifier isolation is a constant (`verifier_isolation? == true`), reflecting

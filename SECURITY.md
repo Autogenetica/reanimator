@@ -1,6 +1,6 @@
 # Security Policy
 
-Security is part of Frankenstein's design, not a hidden settings page. The tool
+Security is part of Reanimator's design, not a hidden settings page. The tool
 treats repository content, issues, logs, pull requests, and external
 documentation as **untrusted input**, and treats coding-agent responses as
 **untrusted proposals** until they are independently evaluated.
@@ -26,7 +26,7 @@ disclosure timeline.
   and resource isolation (spec section 12) are planned but not implemented. Treat
   `--execute` on untrusted repositories accordingly; it is off by default.
 - **Non-bypassable safety floor.** No configuration layer may loosen verifier
-  isolation, remove protected paths (`.frankenstein.yml`, workflows, CODEOWNERS),
+  isolation, remove protected paths (`.reanimator.yml`, workflows, CODEOWNERS),
   or enable automatic merge in v1.
 - **Anti-gaming.** A task that modifies the rules of proof cannot use those
   modified rules to approve itself.
