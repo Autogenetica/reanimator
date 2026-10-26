@@ -52,6 +52,32 @@ RSpec.describe "reports" do
       expect(out).to include("Recommended for onboarding:")
     end
   end
+
+  # Section 12: the posture is part of onboarding, not a hidden settings page,
+  # so the contract has to say in words what it makes binding.
+  describe Frankenstein::Reports::Contract do
+    it "names the posture, explains it, and lists exactly what it requires" do
+      path = make_repo(files: {
+        "README.md" => "# widget",
+        ".frankenstein.yml" => "version: 1\nintent: maintain\nprofile: generic\nsecurity:\n  posture: strict\n"
+      })
+      contract = Frankenstein::EffectivePolicyResolver.new(Frankenstein::Repository.at(path)).resolve
+
+      out = described_class.new(contract).render
+
+      expect(out).to include("Security posture: strict")
+      expect(out).to include("deny-by-default network and secrets")
+      expect(out).to include("Required: security policy, dependency review, secret scanning")
+      expect(out).to include("Advisory: static analysis, ownership")
+    end
+
+    it "says plainly when a posture requires nothing, rather than leaving the line blank" do
+      path = make_repo(files: {".frankenstein.yml" => "version: 1\nintent: maintain\nprofile: generic\n"})
+      contract = Frankenstein::EffectivePolicyResolver.new(Frankenstein::Repository.at(path)).resolve
+
+      expect(described_class.new(contract).render).to include("Required: none")
+    end
+  end
 end
 
 RSpec.describe "drift reporting" do

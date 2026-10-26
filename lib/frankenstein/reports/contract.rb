@@ -12,8 +12,8 @@ module Frankenstein
       end
 
       def render
-        [header, autonomy_section, criteria_section, protected_section, notes_section]
-          .compact.join("\n\n")
+        [header, autonomy_section, security_section, criteria_section,
+          protected_section, notes_section].compact.join("\n\n")
       end
 
       private
@@ -23,7 +23,6 @@ module Frankenstein
           "Effective contract — #{@contract.repository.full_name}",
           "Intent:   #{@contract.intent} (#{@contract.intent_confirmed? ? "confirmed" : "provisional"})",
           "Profile:  #{@contract.profile.id} (#{@contract.profile_source}) — #{@contract.profile.summary}",
-          "Security: #{@contract.security_posture} posture",
           "Policy version: #{@contract.policy_version}"
         ].join("\n")
       end
@@ -31,6 +30,19 @@ module Frankenstein
       def autonomy_section
         pairs = @contract.autonomy.map { |k, v| "#{k}=#{v}" }.join("  ")
         "Autonomy: #{pairs}"
+      end
+
+      # Section 12 insists the posture is named and explained in plain language
+      # rather than hidden in settings, so it gets its own block: what it is,
+      # what it means, and exactly which controls it makes binding.
+      def security_section
+        posture = @contract.security_posture
+        [
+          "Security posture: #{posture}",
+          "  #{posture.description}",
+          "  Required: #{SecurityControl.labels(posture.required_controls)}",
+          "  Advisory: #{SecurityControl.labels(posture.advisory_controls)}"
+        ].join("\n")
       end
 
       def criteria_section
