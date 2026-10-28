@@ -191,6 +191,35 @@ Every outcome is recorded as an immutable run-ledger entry (`no_op`, `report`,
 `draft_pr`, `escalation`, `safe_stop`). Submitting a proposed change to GitHub is
 a deliberate, separate step — not something repair does on its own.
 
+#### Submitting the draft — `repair --submit`
+
+Submission is gated twice: the contract sets the ceiling, and the run arms it.
+
+```yaml
+# .reanimator.yml
+autonomy:
+  repair: allowed
+  submit: allowed
+```
+
+```console
+$ REANIMATOR_GITHUB_TOKEN=… reanimator repair --submit
+Outcome:  DRAFT PR (submitted)
+Evidence: at_risk → alive
+Draft PR: https://github.com/acme/widget/pull/1
+  branch: reanimator/repair-arithmetic-901cec8a
+SUBMITTED AS A DRAFT PULL REQUEST. THE LOCAL WORKING TREE WAS NOT MODIFIED; NOTHING WAS MERGED.
+```
+
+The token needs `contents: write` and `pull_requests: write` on that repository
+only — a GitHub App installation token in CI, or a fine-grained token locally.
+The pull request is built through the GitHub API on top of the default branch,
+and only when your checkout is clean and at that branch's head, so it contains
+exactly the tree that was verified. A repeat run moves the same branch and
+updates the same pull request. Anything that blocks submission — the contract
+not enabling it, no token, a dirty or diverged checkout, GitHub refusing —
+escalates with the verified change attached.
+
 ### Repository families — `families` and `gates`
 
 Related projects are a compatibility graph, not isolated targets. Families are
@@ -474,7 +503,7 @@ Two rules are **enforced**, not just documented:
 | 18 MVP slices 1–4 | ✅ Inventory→baseline→commissioning→bounded repair |
 | 10 Repository families & compatibility graphs | ✅ `Relationship`, `Family`, `FamilyInference`, `Family::GateRunner` |
 | 12 Security controls | ✅ `SecurityControl`, `SecurityPosture#obligations`, `Evaluators::SecurityEvidence`, `EgressControl` (denied egress enforced on Linux, refused elsewhere; the balanced registry allowlist is advisory) |
-| Draft-PR *submission* to GitHub | ⏳ Deliberate opt-in; artifact is ready, the write is not wired |
+| 11 Submit rung (draft-PR submission) | ✅ `Submitter`, `GitHubClient`, `repair --submit` (contract ceiling + per-run flag; draft only) |
 | GitHub App, web UI | ⏳ Explicitly later (spec sections 03, 18) |
 
 See [`.architecture/decisions`](.architecture/decisions) for the reasoning

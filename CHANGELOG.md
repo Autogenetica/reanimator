@@ -8,6 +8,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The submit rung** (section 11). `reanimator repair --submit` opens a
+  verified repair as a draft pull request, when the contract also sets
+  `autonomy: submit: allowed`. A separate `Submitter` — never the agent — holds
+  the token from `REANIMATOR_GITHUB_TOKEN`, which is withheld from every command
+  a check executes. The pull request is built through the GitHub API on top of
+  the default branch's head, and only when the local checkout is clean and at
+  that head, so it contains exactly the verified tree. A repeat run moves the
+  same branch and updates the same pull request. Every refusal escalates with
+  the verified change still attached.
+
 - **Network egress enforcement** (section 12). A security posture's network rule
   was a label; it is now enforced or refused. Under `strict` and `local`, which
   deny egress, every executed check runs inside an empty network namespace

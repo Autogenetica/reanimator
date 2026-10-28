@@ -24,6 +24,11 @@ module Reanimator
     MAX_OUTPUT_BYTES = 1 << 20 # 1 MiB
     READ_CHUNK = 16_384
 
+    # Credentials the command must never see. Checks run repository code, which
+    # is untrusted input, so a token held for submission stays with the
+    # submitter.
+    WITHHELD_ENV = {Configuration::GITHUB_TOKEN_ENV => nil}.freeze
+
     Result = Struct.new(:success, :output, :duration, :timed_out) do
       def success? = success
       def timed_out? = timed_out
@@ -38,7 +43,7 @@ module Reanimator
     # @return [Result]
     def run(command, chdir:, timeout:, prefix: [])
       started = clock
-      stdin, out_and_err, wait_thread = Open3.popen2e(*prefix, "sh", "-c", command, chdir: chdir, pgroup: true)
+      stdin, out_and_err, wait_thread = Open3.popen2e(WITHHELD_ENV, *prefix, "sh", "-c", command, chdir: chdir, pgroup: true)
       stdin.close
       out_and_err.binmode
 

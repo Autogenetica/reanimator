@@ -50,6 +50,24 @@ module Reanimator
       nil
     end
 
+    # @return [String, nil] the commit HEAD points at
+    def head_sha(root)
+      capture(root, "rev-parse", "HEAD")
+    end
+
+    # Whether the working tree has no uncommitted or untracked changes. A
+    # failed git call is not "clean": callers use this to decide whether what
+    # they verified is what is committed, so they must not be told yes by
+    # default.
+    #
+    # @return [Boolean]
+    def clean?(root)
+      stdout, _stderr, status = Open3.capture3("git", "-C", root.to_s, "status", "--porcelain")
+      status.success? && stdout.strip.empty?
+    rescue Errno::ENOENT
+      false
+    end
+
     # @return [Array<String>] tracked files (fast, respects .gitignore); empty
     #   when git is unavailable
     def tracked_files(root)

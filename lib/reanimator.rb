@@ -12,7 +12,8 @@ loader = Zeitwerk::Loader.for_gem
 loader.inflector.inflect(
   "cli" => "CLI",
   "github_actions" => "GitHubActions",
-  "github_check" => "GitHubCheck"
+  "github_check" => "GitHubCheck",
+  "github_client" => "GitHubClient"
 )
 # errors.rb intentionally defines the whole error family in one file, so it is
 # required directly rather than autoloaded one-constant-per-file.
@@ -170,8 +171,8 @@ module Reanimator
   # @param provider [Symbol] agent provider (:local by default)
   # @param task_class [Symbol] the task class governing autonomy (section 11)
   # @return [Run]
-  def self.repair(path, provider: :local, task_class: :patch_dependency)
-    RepairRun.new(contract(path), provider: provider, task_class: task_class).run
+  def self.repair(path, provider: :local, task_class: :patch_dependency, submit: false)
+    RepairRun.new(contract(path), provider: provider, task_class: task_class, submit: submit).run
   end
 
   # Infer the compatibility graph for a set of repository paths: which

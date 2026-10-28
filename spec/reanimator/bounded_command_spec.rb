@@ -13,6 +13,17 @@ RSpec.describe Reanimator::BoundedCommand do
     expect(result.output).to include("yes")
   end
 
+  it "withholds the submission token from the command" do
+    original = ENV.fetch("REANIMATOR_GITHUB_TOKEN", nil)
+    ENV["REANIMATOR_GITHUB_TOKEN"] = "secret"
+    result = described_class.run('echo "token=[${REANIMATOR_GITHUB_TOKEN}]"', chdir: Dir.pwd, timeout: 10)
+    expect(result.output).to include("token=[]")
+    # The parent still holds it: only the child is denied.
+    expect(ENV["REANIMATOR_GITHUB_TOKEN"]).to eq("secret")
+  ensure
+    ENV["REANIMATOR_GITHUB_TOKEN"] = original
+  end
+
   it "treats a nonzero exit as failure" do
     result = described_class.run("exit 3", chdir: Dir.pwd, timeout: 10)
     expect(result).not_to be_success

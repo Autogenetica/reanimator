@@ -9,15 +9,28 @@ module Reanimator
   # route to a ready agent, let it propose a patch in an isolated workspace,
   # apply that patch to a *separate* clean copy, re-evaluate independently, and
   # only then materialize a proposed draft PR. Every exit is a recorded {Run}.
+  #
+  # Submitting that draft is a separate, doubly gated step (section 11 submit
+  # rung): the contract must enable `submit` and the run must ask for it. The
+  # {Submitter}, never the agent, holds the credential.
   class RepairRun
     REQUIRED_CAPABILITIES = [Agents::Capability::PATCH, Agents::Capability::REPOSITORY_EDIT].freeze
     EDITABLE = ["lib/**", "app/**", "*.rb"].freeze
+    # Task-class submit policies that may open a pull request. `:issue` may
+    # only open an issue, so it does not qualify.
+    PULL_REQUEST_POLICIES = %i[allowed draft draft_elevated].freeze
 
-    def initialize(contract, provider: :local, task_class: :patch_dependency, trigger: "user request")
+    # @param submit [Boolean] arm submission for this run; the contract still
+    #   has to enable it
+    # @param submitter [Submitter, nil] injected in specs
+    def initialize(contract, provider: :local, task_class: :patch_dependency, trigger: "user request",
+      submit: false, submitter: nil)
       @contract = contract
       @provider = provider.to_sym
       @task_class = task_class.to_sym
       @trigger = trigger
+      @submit = submit
+      @submitter = submitter
     end
 
     # @return [Run]
@@ -76,13 +89,40 @@ module Reanimator
           obligation: obligation(target), patch: result.patch, plan: result.plan,
           pre_state: pre.state.to_sym, post_state: post.state.to_sym
         )
-        record(:draft_pr, pre: pre, post: post, objective: target, provider: adapter.provider,
-          proposed_change: change, cost: result.cost_usd, tools: result.tool_use)
+        evidence = {pre: pre, post: post, objective: target, provider: adapter.provider,
+                    proposed_change: change, cost: result.cost_usd, tools: result.tool_use}
+        @submit ? submit(change, evidence) : record(:draft_pr, **evidence)
       else
         record(:report, pre: pre, post: post, objective: target, provider: adapter.provider,
           cost: result.cost_usd, reason: "The repair did not independently verify; not proposing a change.")
       end
     end
+
+    # A verified change leaves the machine only when the contract enables the
+    # submit rung for this task class. Any refusal escalates with the change
+    # still attached, so a human can take it from there.
+    def submit(change, evidence)
+      resolution = PermissionModel.new(@contract).resolve(@task_class)
+      policy = resolution.actions.fetch(:submit)
+      unless PULL_REQUEST_POLICIES.include?(policy)
+        return record(:escalation, **evidence, reason: "Submission was requested but #{submit_blocker(policy)}.")
+      end
+
+      outcome = submitter.submit(change, elevated_review: resolution.elevated_review? || policy == :draft_elevated)
+      return record(:draft_pr, **evidence, pull_request_url: outcome.url) if outcome.submitted?
+
+      record(:escalation, **evidence, reason: "The repair verified but was not submitted: #{outcome.reason}.")
+    end
+
+    def submit_blocker(policy)
+      if policy == :issue
+        "the #{@task_class} task class may only open an issue, not a pull request"
+      else
+        "the contract does not enable it (set autonomy: submit: allowed in #{Reanimator.configuration.contract_filename})"
+      end
+    end
+
+    def submitter = @submitter ||= Submitter.new(@contract.repository)
 
     # Apply the patch to a fresh, clean copy and grade it there - never in the
     # agent's workspace (verifier isolation, section 09).
@@ -143,12 +183,13 @@ module Reanimator
         end
     end
 
-    def record(outcome, pre: nil, post: nil, objective: nil, provider: nil, proposed_change: nil, cost: 0.0, tools: [], reason: nil)
+    def record(outcome, pre: nil, post: nil, objective: nil, provider: nil, proposed_change: nil, cost: 0.0,
+      tools: [], reason: nil, pull_request_url: nil)
       Run.new(
         outcome: outcome, repository: @contract.repository, policy_version: @contract.policy_version,
         trigger: @trigger, objective: objective, provider: provider, access: {tools: tools},
         pre_state: pre&.state&.to_sym, post_state: post&.state&.to_sym,
-        cost_usd: cost, proposed_change: proposed_change, reason: reason
+        cost_usd: cost, proposed_change: proposed_change, reason: reason, pull_request_url: pull_request_url
       )
     end
   end

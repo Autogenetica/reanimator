@@ -8,6 +8,11 @@ module Reanimator
     # The file a repository owner may commit to declare intent and overrides.
     DEFAULT_CONTRACT_FILENAME = ".reanimator.yml"
 
+    # The environment variable holding the token a {Submitter} uses to open
+    # draft pull requests. Only the submitter reads it, and it is withheld from
+    # every command a check executes - repository code is untrusted input.
+    GITHUB_TOKEN_ENV = "REANIMATOR_GITHUB_TOKEN"
+
     # @return [Symbol] the security posture applied when a repository does not
     #   declare one (:strict, :balanced, :local, :custom). Section 20 sets
     #   :balanced for public repositories as the v1 default.

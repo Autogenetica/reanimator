@@ -112,12 +112,23 @@ module Reanimator
       applied only to a separate clean copy and re-verified independently; on
       success a draft PR is materialized but NOT submitted. Nothing is written to
       the repository.
+
+      With --submit (section 11 submit rung), a verified repair is opened as a
+      draft pull request through the GitHub API - only when the contract sets
+      autonomy: submit: allowed and REANIMATOR_GITHUB_TOKEN is present, and only
+      when the local checkout is clean and at the default branch's head, so the
+      PR contains exactly the tree that was verified. Otherwise the run escalates
+      with the verified change attached. The local working tree is never
+      modified, and nothing is ever merged.
     DESC
     option :provider, default: "local", desc: "Provider to use (local, codex, claude, amp)"
     option :task_class, default: "patch_dependency", desc: "Task class governing autonomy"
+    option :submit, type: :boolean, default: false,
+      desc: "Open a verified repair as a draft PR (needs autonomy: submit: allowed and #{Configuration::GITHUB_TOKEN_ENV})"
     def repair(path = Dir.pwd)
       guard do
-        run = Reanimator.repair(path, provider: options[:provider].to_sym, task_class: options[:task_class].to_sym)
+        run = Reanimator.repair(path, provider: options[:provider].to_sym, task_class: options[:task_class].to_sym,
+          submit: options[:submit])
         puts Reports::Run.new(run).render
       end
     end
