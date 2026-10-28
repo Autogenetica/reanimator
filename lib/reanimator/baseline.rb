@@ -8,18 +8,25 @@ module Reanimator
   # policy version it was measured against so later runs can detect genuine
   # improvement or regression rather than noise.
   class Baseline
-    attr_reader :contract, :results, :state, :generated_at, :executed
+    attr_reader :contract, :results, :state, :generated_at, :executed, :egress
 
-    def initialize(contract:, results:, state:, generated_at:, executed:)
+    # @param egress [EgressControl::Decision, nil] how execution was held to the
+    #   posture's network rule; nil when execution was never requested
+    def initialize(contract:, results:, state:, generated_at:, executed:, egress: nil)
       @contract = contract
       @results = results
       @state = state
       @generated_at = generated_at
       @executed = executed
+      @egress = egress
     end
 
     # @return [Boolean] whether checks actually executed, versus were planned
     def executed? = @executed
+
+    # Whether execution was requested and refused because the posture's network
+    # rule cannot be enforced on this host.
+    def execution_refused? = egress&.refused? || false
 
     def repository = contract.repository
 
@@ -95,6 +102,7 @@ module Reanimator
         repository: repository.full_name,
         state: state.to_sym,
         executed: executed?,
+        egress: egress&.mode,
         generated_at: generated_at.iso8601,
         policy_version: policy_version,
         verified_vitality_rate: verified_vitality_rate.round(3),

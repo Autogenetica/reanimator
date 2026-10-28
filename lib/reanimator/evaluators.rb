@@ -21,10 +21,13 @@ module Reanimator
     # @param timeout [Integer]
     # @param execution_root [String] directory commands run in - a disposable
     #   copy when executing, so the original working tree is never touched
+    # @param egress [EgressControl::Decision, nil] how executed commands are
+    #   held to the posture's network rule
     # @return [Evaluators::Base]
-    def for(criterion, contract:, execute:, timeout:, execution_root: contract.repository.path)
+    def for(criterion, contract:, execute:, timeout:, execution_root: contract.repository.path, egress: nil)
       klass = registry.fetch(criterion.evaluator, Unsupported)
-      klass.new(criterion, contract: contract, execute: execute, timeout: timeout, execution_root: execution_root)
+      klass.new(criterion, contract: contract, execute: execute, timeout: timeout,
+        execution_root: execution_root, egress: egress)
     end
 
     def registry

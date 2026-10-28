@@ -23,6 +23,10 @@ module Reanimator
     # @return [Run]
     def run
       pre = BaselineRunner.new(@contract, execute: true).run
+      # A baseline that never ran has no failures to find; reading that as
+      # "all required criteria pass" would turn a refusal into a clean bill.
+      return record(:safe_stop, pre: pre, reason: unexecuted_reason(pre)) unless pre.executed?
+
       target = pre.first_failing_required_criterion
       return record(:no_op, pre: pre, reason: "All required criteria pass; no repair is needed.") unless target
 
@@ -87,6 +91,11 @@ module Reanimator
         patch.apply(eval_dir)
         BaselineRunner.new(EffectivePolicyResolver.new(Repository.at(eval_dir)).resolve, execute: true).run
       end
+    end
+
+    def unexecuted_reason(pre)
+      why = pre.execution_refused? ? pre.egress.reason : "execution is disabled (allow_execution is false)"
+      "Repair needs an executed baseline, and none ran: #{why}."
     end
 
     def resolved?(target, pre, post)

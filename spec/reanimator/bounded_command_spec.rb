@@ -7,6 +7,12 @@ RSpec.describe Reanimator::BoundedCommand do
     expect(result.output).to include("hello")
   end
 
+  it "runs the shell behind an argv prefix when given one" do
+    result = described_class.run('echo "$WRAPPED"', chdir: Dir.pwd, timeout: 10, prefix: %w[env WRAPPED=yes])
+    expect(result).to be_success
+    expect(result.output).to include("yes")
+  end
+
   it "treats a nonzero exit as failure" do
     result = described_class.run("exit 3", chdir: Dir.pwd, timeout: 10)
     expect(result).not_to be_success

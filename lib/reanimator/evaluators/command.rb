@@ -5,7 +5,9 @@ module Reanimator
     # Runs a discovered or declared shell command and grades it by exit status.
     # In the default (non-executing) mode it reports what it *would* run, so a
     # user can see the plan before granting execution. When execution is
-    # enabled the command is bounded by a hard timeout.
+    # enabled the command is bounded by a hard timeout, and held to the
+    # posture's network rule - or not run at all when that rule cannot be
+    # enforced here.
     class Command < Base
       def call
         return result(:missing_evidence, detail: "No command discovered for this check.") unless criterion.run
@@ -14,7 +16,9 @@ module Reanimator
           return result(:planned, detail: "Would run: #{criterion.run}")
         end
 
-        outcome = BoundedCommand.run(criterion.run, chdir: execution_root, timeout: timeout)
+        return result(:skipped, detail: "Not run: #{egress.reason}.") if egress.refused?
+
+        outcome = BoundedCommand.run(criterion.run, chdir: execution_root, timeout: timeout, prefix: egress.prefix)
         grade(outcome)
       end
 

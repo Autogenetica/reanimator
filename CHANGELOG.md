@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Network egress enforcement** (section 12). A security posture's network rule
+  was a label; it is now enforced or refused. Under `strict` and `local`, which
+  deny egress, every executed check runs inside an empty network namespace
+  (unprivileged `unshare` on Linux) — verified by an outbound connection that
+  succeeds outside the namespace and cannot even resolve inside it. Where that
+  cannot be enforced, the baseline refuses to execute, marks each command
+  criterion `skipped` with the reason, and says so on the `Mode:` line; it never
+  runs unprotected. `balanced` stays unrestricted and now says plainly that its
+  package-registry allowlist is advisory. Family gates are held to the
+  downstream member's posture, and a bounded repair whose baseline did not
+  execute stops safely instead of reading the empty result as a clean bill of
+  health.
+
 ## [0.1.0] - 2026-10-28
 
 ### Changed

@@ -32,7 +32,7 @@ Gem::Specification.new do |spec|
     ls.readlines("\x0", chomp: true).reject do |f|
       (f == gemspec) ||
         f.start_with?(*%w[bin/ spec/ features/ .git .github .architecture Gemfile]) ||
-        %w[.reanimator.yml .rspec .standard.yml Rakefile RELEASING.md].include?(f)
+        %w[.reanimator.yml .rspec .standard.yml Rakefile RELEASING.md BUILD-PLAN.md].include?(f)
     end
   end
   spec.bindir = "exe"
