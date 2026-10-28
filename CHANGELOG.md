@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-28
+
 ### Changed
 
 - **The product is now Reanimator** (ADR-006). The gem name `frankenstein` is
@@ -200,3 +202,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `Baseline` answers `failing_required`, `unproven_required`,
   `first_failing_required_criterion`, `result_for`, and `verified_required_ids`,
   removing duplicated result-digging from the repair flow and reporters.
+
+[Unreleased]: https://github.com/Autogenetica/reanimator/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Autogenetica/reanimator/releases/tag/v0.1.0

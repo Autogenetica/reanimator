@@ -12,7 +12,7 @@ exchanges a short-lived OIDC token at release time.
 
    | Field | Value |
    | --- | --- |
-   | Repository owner | `codenamev` |
+   | Repository owner | `Autogenetica` |
    | Repository name | `reanimator` |
    | Workflow filename | `release.yml` |
    | Environment | *(leave empty)* |
