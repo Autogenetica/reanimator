@@ -31,5 +31,11 @@ module Reanimator
       @command_timeout = Integer(ENV["REANIMATOR_COMMAND_TIMEOUT"] || 900)
       @allow_execution = ENV["REANIMATOR_ALLOW_EXECUTION"] != "false"
     end
+
+    # Execution is doubly gated: a run must ask for it and the configuration
+    # must allow it.
+    #
+    # @param requested [Boolean] the per-run execute flag
+    def execution_permitted?(requested) = requested && allow_execution
   end
 end

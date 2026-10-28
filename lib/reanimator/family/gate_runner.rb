@@ -82,7 +82,7 @@ module Reanimator
       end
 
       def execution_allowed?
-        execute && Reanimator.configuration.allow_execution
+        Reanimator.configuration.execution_permitted?(execute)
       end
 
       def planned(gate, check)

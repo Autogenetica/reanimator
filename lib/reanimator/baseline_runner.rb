@@ -76,7 +76,7 @@ module Reanimator
     # Execution requires both the per-run request and the global allowance.
     # Native evaluators ignore this flag and always inspect.
     def execution_allowed?
-      execute && Reanimator.configuration.allow_execution
+      Reanimator.configuration.execution_permitted?(execute)
     end
 
     # Whether commands actually run: execution is allowed and the posture's
