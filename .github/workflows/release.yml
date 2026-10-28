@@ -17,7 +17,7 @@ jobs:
       contents: write # rake release pushes the version tag
       id-token: write # trusted publishing: a short-lived OIDC token, no stored API key
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ruby/setup-ruby@v1
         with:
