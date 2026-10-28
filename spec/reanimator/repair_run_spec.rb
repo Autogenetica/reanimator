@@ -101,12 +101,13 @@ RSpec.describe Reanimator::RepairRun do
     end
 
     it "escalates when the task class may only open an issue" do
+      fake = submitter(opened)
       run = run_for(broken_repo(repair: :allowed, submit: true),
-        task_class: :major_upgrade, submit: true, submitter: submitter(opened))
+        task_class: :major_upgrade, submit: true, submitter: fake)
 
-      # major_upgrade only plans at the repair rung, so it never gets as far
-      # as submitting; the escalation is about repair, not about a PR.
       expect(run.outcome).to eq(:escalation)
+      expect(run.reason).to include("major_upgrade task class may only open an issue")
+      expect(fake).not_to have_received(:submit)
     end
 
     it "opens the draft when both the contract and the run allow it" do
