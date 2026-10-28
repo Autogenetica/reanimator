@@ -16,9 +16,6 @@ module Reanimator
   class RepairRun
     REQUIRED_CAPABILITIES = [Agents::Capability::PATCH, Agents::Capability::REPOSITORY_EDIT].freeze
     EDITABLE = ["lib/**", "app/**", "*.rb"].freeze
-    # Task-class submit policies that may open a pull request. `:issue` may
-    # only open an issue, so it does not qualify.
-    PULL_REQUEST_POLICIES = %i[allowed draft draft_elevated].freeze
 
     # @param submit [Boolean] arm submission for this run; the contract still
     #   has to enable it
@@ -103,19 +100,18 @@ module Reanimator
     # still attached, so a human can take it from there.
     def submit(change, evidence)
       resolution = PermissionModel.new(@contract).resolve(@task_class)
-      policy = resolution.actions.fetch(:submit)
-      unless PULL_REQUEST_POLICIES.include?(policy)
-        return record(:escalation, **evidence, reason: "Submission was requested but #{submit_blocker(policy)}.")
+      unless resolution.opens_pull_requests?
+        return record(:escalation, **evidence, reason: "Submission was requested but #{submit_blocker(resolution)}.")
       end
 
-      outcome = submitter.submit(change, elevated_review: resolution.elevated_review? || policy == :draft_elevated)
+      outcome = submitter.submit(change, elevated_review: resolution.elevated_review?)
       return record(:draft_pr, **evidence, pull_request_url: outcome.url) if outcome.submitted?
 
       record(:escalation, **evidence, reason: "The repair verified but was not submitted: #{outcome.reason}.")
     end
 
-    def submit_blocker(policy)
-      if policy == :issue
+    def submit_blocker(resolution)
+      if resolution.submit_policy == :issue
         "the #{@task_class} task class may only open an issue, not a pull request"
       else
         "the contract does not enable it (set autonomy: submit: allowed in #{Reanimator.configuration.contract_filename})"
