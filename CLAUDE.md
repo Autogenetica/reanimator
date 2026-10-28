@@ -36,7 +36,7 @@ changing a single line of code*. Read-only first, and read-only by default.
 
 ```bash
 bin/setup                                       # bundle install
-bundle exec rake                                # specs + StandardRB (expect 219 examples)
+bundle exec rake                                # specs + StandardRB (expect 232 examples; 1 pending off Linux)
 bundle exec exe/reanimator baseline . --execute  # prove this repo on itself
 bundle exec exe/reanimator contract .            # resolved contract, incl. security posture
 bundle exec exe/reanimator drift . --record      # write .reanimator-snapshot.json
@@ -60,12 +60,11 @@ Each of these was stopped on purpose, not forgotten.
    artifact; the write is not wired. Needs an explicit go-ahead plus two
    decisions: the credential scope (per-repo contents + pull-request write), and
    whether submission is per-run opt-in or declared in the contract.
-2. **Network egress (§12).** `SecurityPosture#network` returns
-   `:deny`/`:package_registries`/`:custom` and *nothing consumes it*.
-   `BoundedCommand` and `Isolation` bound wall-clock time and the working tree,
-   not the network. Closing this needs a real sandbox; until then the README
-   coverage table says "network egress still advisory" rather than claiming §12
-   is finished. Do not let that line start claiming otherwise.
+2. **The rest of §12 isolation.** Denied egress is enforced or refused
+   (`EgressControl`, ADR-007), but user, filesystem and resource isolation are
+   not built: an executed check runs as the invoking user and can write outside
+   its disposable copy. `balanced`'s package-registry allowlist is advisory and
+   the report says so. Do not let `SECURITY.md` or the README claim more.
 3. **Platform work (§03, §18).** GitHub App, web UI, scheduled/continuous runs.
 4. **This repo's own security gates.** `reanimator baseline .` reports two
    advisory gaps against itself — no dependency review, no secret scanning. ~20
