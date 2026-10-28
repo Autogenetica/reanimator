@@ -14,6 +14,10 @@ module Reanimator
   # never the original working tree (section 14: "all commands run in a
   # disposable workspace" and "the baseline is read-only with respect to
   # repository source"). Inspection-only evaluators still read the original.
+  #
+  # Execution has a third gate: the security posture's network rule
+  # ({EgressControl}). A posture that denies egress either runs every command
+  # in an empty network namespace or refuses to execute - never unprotected.
   class BaselineRunner
     attr_reader :contract, :execute, :timeout
 
@@ -26,7 +30,7 @@ module Reanimator
 
     # @return [Baseline]
     def run
-      if execution_allowed?
+      if executing?
         # Commands run inside a throwaway copy so builds/tests cannot mutate the
         # real checkout (no stray .gem, coverage/, or tmp/ artifacts).
         Isolation.copy(contract.repository.path) { |workspace| measure(workspace) }
@@ -41,7 +45,7 @@ module Reanimator
       results = contract.criteria.map do |criterion|
         Evaluators.for(
           criterion, contract: contract, execute: execution_allowed?,
-          timeout: timeout, execution_root: execution_root
+          timeout: timeout, execution_root: execution_root, egress: egress
         ).call
       end
       results = apply_waivers(results)
@@ -51,7 +55,8 @@ module Reanimator
         results: results,
         state: ProofOfLife.assess(contract, results),
         generated_at: now,
-        executed: execution_allowed?
+        executed: executing?,
+        egress: egress
       )
     end
 
@@ -71,7 +76,21 @@ module Reanimator
     # Execution requires both the per-run request and the global allowance.
     # Native evaluators ignore this flag and always inspect.
     def execution_allowed?
-      execute && Reanimator.configuration.allow_execution
+      Reanimator.configuration.execution_permitted?(execute)
+    end
+
+    # Whether commands actually run: execution is allowed and the posture's
+    # network rule can be honored on this host.
+    def executing?
+      execution_allowed? && !egress.refused?
+    end
+
+    # Only decided when execution is requested, so a read-only baseline never
+    # probes the host for namespace support.
+    def egress
+      return unless execution_allowed?
+
+      @egress ||= EgressControl.for(contract.security_posture)
     end
 
     def now

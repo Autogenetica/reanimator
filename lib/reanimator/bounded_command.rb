@@ -14,6 +14,9 @@ module Reanimator
   # The child is started as its own process-group leader and, on timeout, the
   # *entire group* is signalled - not just the `sh` parent - so a spawned
   # grandchild (the actual test or build process) cannot outlive the bound.
+  #
+  # An optional argv prefix wraps the shell - {EgressControl} uses it to run
+  # the command inside an empty network namespace.
   module BoundedCommand
     # Cap on captured output so a runaway producer cannot exhaust memory before
     # the time bound fires. The pipe is still drained past the cap so the child
@@ -31,10 +34,11 @@ module Reanimator
     # @param command [String]
     # @param chdir [String]
     # @param timeout [Integer] seconds
+    # @param prefix [Array<String>] argv run in front of `sh -c`
     # @return [Result]
-    def run(command, chdir:, timeout:)
+    def run(command, chdir:, timeout:, prefix: [])
       started = clock
-      stdin, out_and_err, wait_thread = Open3.popen2e("sh", "-c", command, chdir: chdir, pgroup: true)
+      stdin, out_and_err, wait_thread = Open3.popen2e(*prefix, "sh", "-c", command, chdir: chdir, pgroup: true)
       stdin.close
       out_and_err.binmode
 

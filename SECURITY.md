@@ -22,9 +22,20 @@ disclosure timeline.
 - **Bounded execution.** Any executed check is opt-in (per run and globally) and
   runs under a hard wall-clock bound that terminates the entire process group,
   so a spawned child cannot outlive the bound.
-- **Known limitation.** Execution is not yet OS-sandboxed — network egress, user,
-  and resource isolation (spec section 12) are planned but not implemented. Treat
-  `--execute` on untrusted repositories accordingly; it is off by default.
+- **Network egress follows the posture.** Under `strict` and `local`, which deny
+  egress, executed checks run inside an empty network namespace (unprivileged
+  `unshare` on Linux), leaving only loopback. Where that cannot be enforced — macOS,
+  or Linux without unprivileged user namespaces — Reanimator refuses to execute
+  and says why, rather than running unprotected. GitHub-hosted Ubuntu 24.04
+  runners restrict these namespaces by default; run
+  `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` before
+  Reanimator to enforce rather than refuse. Under `balanced` the network is
+  not restricted: its package-registry allowlist is advisory, and every executed
+  baseline says so.
+- **Known limitation.** User, filesystem, and resource isolation (spec section 12)
+  are planned but not implemented: an executed check runs as the invoking user and
+  can write outside its disposable copy. Treat `--execute` on untrusted
+  repositories accordingly; it is off by default.
 - **Non-bypassable safety floor.** No configuration layer may loosen verifier
   isolation, remove protected paths (`.reanimator.yml`, workflows, CODEOWNERS),
   or enable automatic merge in v1.

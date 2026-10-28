@@ -9,13 +9,17 @@ module Reanimator
     class Base
       attr_reader :criterion, :contract, :execute, :timeout, :execution_root
 
-      def initialize(criterion, contract:, execute:, timeout:, execution_root: nil)
+      def initialize(criterion, contract:, execute:, timeout:, execution_root: nil, egress: nil)
         @criterion = criterion
         @contract = contract
         @execute = execute
         @timeout = timeout
         @execution_root = execution_root || contract.repository.path
+        @egress = egress
       end
+
+      # Decided on first use, so a read-only run never probes the host.
+      def egress = @egress ||= EgressControl.for(contract.security_posture)
 
       # @return [CriterionResult]
       def call

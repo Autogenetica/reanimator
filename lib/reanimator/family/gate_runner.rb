@@ -9,7 +9,9 @@ module Reanimator
     #
     # Execution is opt-in exactly as it is for a baseline: by default the runner
     # reports what it *would* prove, so the graph is useful before anyone grants
-    # the right to run anything.
+    # the right to run anything. When it does run, the check is held to the
+    # downstream member's network rule ({EgressControl}), as its own baseline
+    # would be.
     class GateRunner
       # A downstream member proves itself with its smoke script when it has one
       # (the section 10 example uses bin/smoke), else its discovered tests.
@@ -44,8 +46,11 @@ module Reanimator
       end
 
       def run_check(gate, member, check)
+        egress = EgressControl.for(posture_of(member))
+        return result(gate, :skipped, detail: "Not run in #{member.full_name}: #{egress.reason}.") if egress.refused?
+
         outcome = Isolation.copy(member.path) do |workspace|
-          BoundedCommand.run(check, chdir: workspace, timeout: timeout)
+          BoundedCommand.run(check, chdir: workspace, timeout: timeout, prefix: egress.prefix)
         end
 
         if outcome.success?
@@ -68,8 +73,16 @@ module Reanimator
         nil
       end
 
+      # The member's own effective posture. A member whose contract cannot be
+      # resolved is held to strict - unknown means deny, not allow.
+      def posture_of(member)
+        EffectivePolicyResolver.new(Repository.at(member.path)).resolve.security_posture
+      rescue Error
+        SecurityPosture[:strict]
+      end
+
       def execution_allowed?
-        execute && Reanimator.configuration.allow_execution
+        Reanimator.configuration.execution_permitted?(execute)
       end
 
       def planned(gate, check)

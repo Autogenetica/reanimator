@@ -118,12 +118,24 @@ Opt in to bounded execution to actually prove life:
 ```console
 $ reanimator baseline --execute
 State:   ALIVE — All due obligations have fresh passing evidence and no unapproved blocking risk.
-Mode:    executed (bounded, read-only)
+Mode:    executed (bounded, read-only; network not restricted; the balanced posture's package-registry allowlist is advisory)
 Verified Vitality Rate: 100% (3/3 required)
   ✓* tests: Test suite passes. — bundle exec rspec (1.69s)
   ✓* build: Gem builds. — gem build widget.gemspec (0.32s)
 
 NO SOURCE CHANGES WERE MADE
+```
+
+Execution is held to the security posture's network rule. Under `strict` or
+`local`, which deny egress, every command runs inside an empty network namespace
+(unprivileged `unshare` on Linux). Where that cannot be enforced, Reanimator
+refuses to execute rather than running unprotected:
+
+```console
+$ reanimator baseline --execute   # strict posture, on macOS
+State:   UNPROVEN — A claim exists but sufficient executable evidence is absent or stale.
+Mode:    not executed — the strict posture requires denied network egress and this runner cannot enforce it (no network sandbox on arm64-darwin23)
+  ◦* suite: The suite passes. — Not run: the strict posture requires denied network egress and this runner cannot enforce it (no network sandbox on arm64-darwin23).
 ```
 
 Other formats: `--format check` (the GitHub Check surface) and `--format json`.
@@ -461,7 +473,7 @@ Two rules are **enforced**, not just documented:
 | 13 / 17 Bounded repair & run ledger | ✅ `RepairRun`, `Obligation`, `ProposedChange`, `Run` (no writes) |
 | 18 MVP slices 1–4 | ✅ Inventory→baseline→commissioning→bounded repair |
 | 10 Repository families & compatibility graphs | ✅ `Relationship`, `Family`, `FamilyInference`, `Family::GateRunner` |
-| 12 Security controls | ✅ `SecurityControl`, `SecurityPosture#obligations`, `Evaluators::SecurityEvidence` (network egress still advisory) |
+| 12 Security controls | ✅ `SecurityControl`, `SecurityPosture#obligations`, `Evaluators::SecurityEvidence`, `EgressControl` (denied egress enforced on Linux, refused elsewhere; the balanced registry allowlist is advisory) |
 | Draft-PR *submission* to GitHub | ⏳ Deliberate opt-in; artifact is ready, the write is not wired |
 | GitHub App, web UI | ⏳ Explicitly later (spec sections 03, 18) |
 

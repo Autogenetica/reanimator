@@ -64,7 +64,7 @@ patch:
 | 09 | Acceptance criteria, verifier isolation, waivers | done |
 | 10 | Repository families & compatibility graphs | done |
 | 11 | Autonomy ladder & permission model | ladder done; **`submit` rung not wired** |
-| 12 | Security controls | evidence done; **network egress unenforced** |
+| 12 | Security controls | done — denied egress enforced on Linux, refused elsewhere (Slice 1) |
 | 13/17 | Bounded repair & run ledger | done (no writes) |
 | 14–15 | Baseline & proof-of-life | done |
 | 16 | Escalation | outcome exists; **no delivery surface** |
@@ -72,11 +72,36 @@ patch:
 | 19 | Portability | satisfied by ADR-004 (agents as replaceable adapters) |
 | 20 | v1 defaults | done (autonomy defaults, posture defaults, Ruby/Rails first) |
 
-Five things remain. They are ordered by how much the rest depends on them.
+Slice 1 is done; four things remain. They are ordered by how much the rest
+depends on them.
 
 ---
 
-## Slice 1 — Enforce what the security posture promises (§12)
+## Slice 1 — Enforce what the security posture promises (§12) — done
+
+**Outcome (2026-10-28).** `EgressControl` turns `SecurityPosture#network` into
+a decision consumed by every execution path (`BaselineRunner` → `Evaluators::Command`,
+`Family::GateRunner`, and `RepairRun` through its baselines):
+
+- `:deny` (`strict`, `local`): commands run behind an unprivileged
+  `unshare --user --map-current-user --net` prefix (falling back to
+  `--map-root-user`), probed once per process and accepted only if the
+  namespace really shows nothing but loopback. Proven in a Linux container: an
+  outbound connection succeeds without the prefix and cannot resolve with it.
+- No namespace support (macOS; Linux without unprivileged user namespaces): the
+  baseline refuses. Command criteria are `skipped` with the reason, `Mode:` says
+  "not executed — …", and nothing runs.
+- `balanced` / `custom`: unrestricted, and the `Mode:` line says so — the
+  registry allowlist is advisory. Enforcing it would need an egress proxy.
+- `RepairRun` now stops safely when its baseline did not execute, instead of
+  reading zero failures as "all required criteria pass".
+
+Not done, and still listed in `SECURITY.md`: user, filesystem and resource
+isolation. An executed check runs as the invoking user and can write outside
+its disposable copy.
+
+The original brief follows.
+
 
 **The gap.** `SecurityPosture#network` returns `:deny`, `:package_registries`
 or `:custom`, and **nothing consumes it**. `BoundedCommand` bounds wall-clock
@@ -230,13 +255,18 @@ have to display.
 - **Profile criteria are defaults.** Discovery substitutes the commands a
   repository actually uses; anything a profile expects but discovery cannot find
   is surfaced as missing proof, never assumed.
+- **`EgressControl.namespace_prefix` is probed once per process and memoized.**
+  Specs stub it rather than depend on the host; the one spec that exercises
+  real namespaces reports *pending* off Linux, so a green run never hides that
+  enforcement went untested. A read-only baseline must never probe — that would
+  spawn a process — so the decision is made lazily, only when execution is requested.
 - **A rename touches ~150 files.** Do it as a re-runnable substitution script,
   not a hand-made diff, and land it last — `ADR-006` records why.
 
 ## Verifying you have not broken anything
 
 ```bash
-bundle exec rake                                  # 219 examples, StandardRB
+bundle exec rake                                  # 232 examples (1 pending off Linux), StandardRB
 bundle exec exe/reanimator baseline . --execute    # ALIVE — 100% (3/3)
 bundle exec exe/reanimator contract .              # posture, criteria, protected paths
 bundle exec exe/reanimator drift .                 # obligations, or drift if recorded

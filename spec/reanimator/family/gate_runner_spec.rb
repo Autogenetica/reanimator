@@ -43,6 +43,16 @@ RSpec.describe Reanimator::Family::GateRunner do
     expect(File.exist?(File.join(downstream, "sentinel.txt"))).to be(false)
   end
 
+  it "refuses to run a strict member's check when egress cannot be enforced" do
+    allow(Reanimator::EgressControl).to receive(:namespace_prefix).and_return(nil)
+    strict = "version: 1\nintent: maintain\nprofile: generic\nsecurity:\n  posture: strict\n"
+    family = family_with(check: "true", downstream_files: {".reanimator.yml" => strict})
+
+    result = described_class.new(family, execute: true).run.first
+    expect(result.status).to eq(:skipped)
+    expect(result.detail).to include("Not run in widget-examples: the strict posture requires denied network egress")
+  end
+
   it "falls back to the downstream member's own smoke script" do
     family = family_with(check: nil, downstream_files: {"bin/smoke" => "#!/bin/sh\nexit 0\n"})
     expect(described_class.new(family).run.first.detail).to include("Would run bin/smoke")

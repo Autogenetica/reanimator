@@ -45,12 +45,25 @@ module Reanimator
         [
           "Baseline — #{@baseline.repository.full_name}",
           "State:   #{@baseline.state.to_s.upcase.tr("_", " ")} — #{@baseline.state.meaning}",
-          "Mode:    #{@baseline.executed? ? "executed (bounded, read-only)" : "read-only (planned)"}",
+          "Mode:    #{mode}",
           "Intent:  #{intent}",
           "Profile: #{contract.profile.id} (#{contract.profile_source})",
           "Contract: #{@baseline.policy_version}",
           vvr
         ].join("\n")
+      end
+
+      # States what actually happened, including the network rule: an executed
+      # run says whether egress was denied, and a refused run says why nothing ran.
+      def mode
+        egress = @baseline.egress
+        if @baseline.execution_refused?
+          "not executed — #{egress.reason}"
+        elsif @baseline.executed?
+          "executed (bounded, read-only; #{egress.reason})"
+        else
+          "read-only (planned)"
+        end
       end
 
       def criteria_section
