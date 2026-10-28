@@ -26,7 +26,10 @@ disclosure timeline.
   egress, executed checks run inside an empty network namespace (unprivileged
   `unshare` on Linux), leaving only loopback. Where that cannot be enforced — macOS,
   or Linux without unprivileged user namespaces — Reanimator refuses to execute
-  and says why, rather than running unprotected. Under `balanced` the network is
+  and says why, rather than running unprotected. GitHub-hosted Ubuntu 24.04
+  runners restrict these namespaces by default; run
+  `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` before
+  Reanimator to enforce rather than refuse. Under `balanced` the network is
   not restricted: its package-registry allowlist is advisory, and every executed
   baseline says so.
 - **Known limitation.** User, filesystem, and resource isolation (spec section 12)

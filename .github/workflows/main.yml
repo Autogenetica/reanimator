@@ -22,5 +22,10 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
+      # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor.
+      # Lifting it lets the network-namespace spec prove real egress
+      # enforcement here instead of reporting pending.
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Run tests and linter
         run: bundle exec rake
