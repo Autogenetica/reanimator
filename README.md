@@ -2,6 +2,8 @@
 
 **Turn repository intent into a verified, low-friction stewardship contract.**
 
+An [Autogenetica](https://autogenetica.ai) system for self-maintaining software.
+
 > The first successful Reanimator run should prove something useful without
 > changing a single line of code.
 

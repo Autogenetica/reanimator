@@ -16,13 +16,13 @@ Gem::Specification.new do |spec|
     effective policy, and produces a read-only proof-of-life baseline - before
     any coding agent or write permission is ever involved.
   DESC
-  spec.homepage = "https://github.com/codenamev/reanimator"
+  spec.homepage = "https://github.com/Autogenetica/reanimator"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.3.0"
 
   spec.metadata["homepage_uri"] = spec.homepage
-  spec.metadata["source_code_uri"] = "https://github.com/codenamev/reanimator"
-  spec.metadata["changelog_uri"] = "https://github.com/codenamev/reanimator/tree/main/CHANGELOG.md"
+  spec.metadata["changelog_uri"] = "https://github.com/Autogenetica/reanimator/blob/main/CHANGELOG.md"
+  spec.metadata["bug_tracker_uri"] = "https://github.com/Autogenetica/reanimator/issues"
   spec.metadata["rubygems_mfa_required"] = "true"
 
   # The `git ls-files -z` loads the files in the RubyGem that have been added
@@ -31,7 +31,8 @@ Gem::Specification.new do |spec|
   spec.files = IO.popen(%w[git ls-files -z], chdir: __dir__, err: IO::NULL) do |ls|
     ls.readlines("\x0", chomp: true).reject do |f|
       (f == gemspec) ||
-        f.start_with?(*%w[bin/ spec/ features/ .git .github .architecture Gemfile])
+        f.start_with?(*%w[bin/ spec/ features/ .git .github .architecture Gemfile]) ||
+        %w[.reanimator.yml .rspec .standard.yml Rakefile RELEASING.md].include?(f)
     end
   end
   spec.bindir = "exe"
