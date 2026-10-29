@@ -12,7 +12,8 @@ loader = Zeitwerk::Loader.for_gem
 loader.inflector.inflect(
   "cli" => "CLI",
   "github_actions" => "GitHubActions",
-  "github_check" => "GitHubCheck"
+  "github_check" => "GitHubCheck",
+  "github_client" => "GitHubClient"
 )
 # errors.rb intentionally defines the whole error family in one file, so it is
 # required directly rather than autoloaded one-constant-per-file.
@@ -172,6 +173,32 @@ module Reanimator
   # @return [Run]
   def self.repair(path, provider: :local, task_class: :patch_dependency)
     RepairRun.new(contract(path), provider: provider, task_class: task_class).run
+  end
+
+  # Repairs the committed HEAD of a repository root and, when the repair
+  # verifies, writes a {Proposal} that `submit` can open as a draft pull
+  # request (section 11 submit rung). The repair runs against an export of
+  # HEAD, so what is verified is exactly what a pull request is built on.
+  #
+  # @param to [String] where to write the proposal
+  # @return [Array(Run, String)] the run, and the proposal path (nil when the
+  #   repair did not produce a verified change)
+  def self.propose(path, to:, provider: :local, task_class: :patch_dependency)
+    CommittedTree.export(path) do |tree|
+      contract = EffectivePolicyResolver.new(tree.repository).resolve
+      run = RepairRun.new(contract, provider: provider, task_class: task_class).run
+      next [run, nil] unless run.outcome == :draft_pr
+
+      [run, Proposal.build(run.proposed_change, tree: tree, contract: contract, task_class: task_class).write(to)]
+    end
+  end
+
+  # Opens a written proposal as a draft pull request. Runs no repository code
+  # and no git; it is the only step that needs REANIMATOR_GITHUB_TOKEN.
+  #
+  # @return [Submitter::Outcome]
+  def self.submit(proposal_path)
+    Submitter.new.submit(Proposal.load(proposal_path))
   end
 
   # Infer the compatibility graph for a set of repository paths: which

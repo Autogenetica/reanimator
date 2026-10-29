@@ -22,6 +22,30 @@ module Reanimator
       capture(root, "config", "--get", "remote.origin.url")
     end
 
+    # scheme://[user@]host[:port]/path - the only remote form with a port.
+    SCHEME_REMOTE = %r{\A([a-z][a-z0-9+.-]*)://(?:[^@/]+@)?([^/:]+)(?::(\d+))?/(.+?)(?:\.git)?/?\z}i
+    # [user@]host:path - scp-like; what follows the colon is always path, so
+    # git@github.com:1234/widget names the owner 1234, not a port.
+    SCP_REMOTE = %r{\A(?:[^@/]+@)?([^/:]+):(?!//)(.+?)(?:\.git)?/?\z}
+    DEFAULT_PORTS = {"ssh" => "22", "https" => "443", "http" => "80", "git" => "9418"}.freeze
+
+    # Splits a remote URL into the host, any non-default port, and the path.
+    # File URLs, local paths and unrecognised forms have no host and return nil.
+    #
+    # @param url [String, nil]
+    # @return [Array(String, String, String), nil] host (lowercased), port or nil, path
+    def remote_parts(url)
+      url = url.to_s.strip
+      if (scheme = SCHEME_REMOTE.match(url))
+        return if scheme[1].casecmp?("file")
+
+        port = scheme[3] unless DEFAULT_PORTS[scheme[1].downcase] == scheme[3]
+        [scheme[2].downcase, port, scheme[4]]
+      elsif (scp = SCP_REMOTE.match(url))
+        [scp[1].downcase, nil, scp[2]]
+      end
+    end
+
     # @return [Boolean] whether an "upstream" remote is configured, a strong
     #   local hint that the repository is a maintained fork
     def upstream_remote?(root)
@@ -48,6 +72,24 @@ module Reanimator
       Integer(count) if count
     rescue ArgumentError
       nil
+    end
+
+    # @return [String, nil] the commit HEAD points at
+    def head_sha(root)
+      capture(root, "rev-parse", "HEAD")
+    end
+
+    # Whether the working tree has no uncommitted or untracked changes. A
+    # failed git call is not "clean": callers use this to decide whether what
+    # they verified is what is committed, so they must not be told yes by
+    # default.
+    #
+    # @return [Boolean]
+    def clean?(root)
+      stdout, _stderr, status = Open3.capture3("git", "-C", root.to_s, "status", "--porcelain")
+      status.success? && stdout.strip.empty?
+    rescue Errno::ENOENT
+      false
     end
 
     # @return [Array<String>] tracked files (fast, respects .gitignore); empty

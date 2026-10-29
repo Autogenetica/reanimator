@@ -15,6 +15,9 @@ module Reanimator
   # *entire group* is signalled - not just the `sh` parent - so a spawned
   # grandchild (the actual test or build process) cannot outlive the bound.
   #
+  # It refuses to start while the submission token is in this process's
+  # environment (see {.refuse_while_holding_token}).
+  #
   # An optional argv prefix wraps the shell - {EgressControl} uses it to run
   # the command inside an empty network namespace.
   module BoundedCommand
@@ -36,7 +39,10 @@ module Reanimator
     # @param timeout [Integer] seconds
     # @param prefix [Array<String>] argv run in front of `sh -c`
     # @return [Result]
+    # @raise [PolicyViolation] while the submission token is in this process's
+    #   environment
     def run(command, chdir:, timeout:, prefix: [])
+      refuse_while_holding_token
       started = clock
       stdin, out_and_err, wait_thread = Open3.popen2e(*prefix, "sh", "-c", command, chdir: chdir, pgroup: true)
       stdin.close
@@ -74,6 +80,20 @@ module Reanimator
         duration: (clock - started).round(2),
         timed_out: timed_out
       )
+    end
+
+    # Commands run repository code, which is untrusted, as the same user. Hiding
+    # the token from the child is not enough: the child can read this
+    # process's environment (ps eww, /proc/<pid>/environ), and unsetting a
+    # variable does not erase the original environment block. So a process
+    # holding the submission token never runs repository code at all - only
+    # `reanimator submit`, which runs none, should be given it.
+    def refuse_while_holding_token
+      return if ENV[Configuration::GITHUB_TOKEN_ENV].to_s.empty?
+
+      raise PolicyViolation,
+        "#{Configuration::GITHUB_TOKEN_ENV} is set, and this would run repository code in the same process. " \
+        "Unset it here; only `reanimator submit`, which runs no repository code, needs it."
     end
 
     # Signals the whole process group led by pid (the negative-pid form), so

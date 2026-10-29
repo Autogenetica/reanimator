@@ -63,7 +63,7 @@ patch:
 | 08 | Agent connections, commissioning, routing | done |
 | 09 | Acceptance criteria, verifier isolation, waivers | done |
 | 10 | Repository families & compatibility graphs | done |
-| 11 | Autonomy ladder & permission model | ladder done; **`submit` rung not wired** |
+| 11 | Autonomy ladder & permission model | done — submit rung wired (Slice 2) |
 | 12 | Security controls | done — denied egress enforced on Linux, refused elsewhere (Slice 1) |
 | 13/17 | Bounded repair & run ledger | done (no writes) |
 | 14–15 | Baseline & proof-of-life | done |
@@ -72,8 +72,8 @@ patch:
 | 19 | Portability | satisfied by ADR-004 (agents as replaceable adapters) |
 | 20 | v1 defaults | done (autonomy defaults, posture defaults, Ruby/Rails first) |
 
-Slice 1 is done; four things remain. They are ordered by how much the rest
-depends on them.
+Slices 1 and 2 are done; three things remain. They are ordered by how much the
+rest depends on them.
 
 ---
 
@@ -140,7 +140,20 @@ unprotected. Prove it by running the CLI, not just the suite.
 
 ---
 
-## Slice 2 — Wire the `submit` rung (§11)
+## Slice 2 — Wire the `submit` rung (§11) — done
+
+**Outcome (2026-10-29).** Decisions: a token from `REANIMATOR_GITHUB_TOKEN`
+(App installation token in CI, fine-grained token locally), opt-in by the
+contract (`autonomy: submit: allowed`) and the run, and — after adversarial
+review showed a check can read its parent process's environment — two steps:
+`repair --propose FILE` (repairs an export of committed `HEAD`, never holds the
+token) and `submit FILE` (holds the token, runs no repository code or git).
+Proven live against a private sandbox: draft created on the verified commit,
+updated on a repeat run, and a reviewer's pushed commit and a PR marked ready
+both refused and left untouched. See ADR-008.
+
+The original brief follows.
+
 
 **The gap.** The artifact exists and the write does not. `ProposedChange`
 produces the draft-PR body; `Run::OUTCOMES` includes `:draft_pr`; `RepairRun`
@@ -266,7 +279,7 @@ have to display.
 ## Verifying you have not broken anything
 
 ```bash
-bundle exec rake                                  # 232 examples (1 pending off Linux), StandardRB
+bundle exec rake                                  # 259 examples (1 pending off Linux), StandardRB
 bundle exec exe/reanimator baseline . --execute    # ALIVE — 100% (3/3)
 bundle exec exe/reanimator contract .              # posture, criteria, protected paths
 bundle exec exe/reanimator drift .                 # obligations, or drift if recorded

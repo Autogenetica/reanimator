@@ -31,15 +31,21 @@ module Reanimator
       def paths = edits.map(&:path)
 
       # Applies the patch beneath a root directory. The harness calls this on a
-      # disposable copy; agents never call it. Refuses to escape the root.
+      # disposable copy; agents never call it. Refuses to escape the root, and
+      # refuses to write through a symlink anywhere along the path: a link can
+      # point outside the workspace, and a change written through one is not
+      # the file that a pull request would carry.
       #
       # @param root [String]
-      # @raise [PolicyViolation] when an edit path escapes the root
+      # @raise [PolicyViolation] when an edit path escapes the root or crosses a symlink
       def apply(root)
         edits.each do |edit|
           full = File.expand_path(File.join(root, edit.path))
           unless full.start_with?(File.expand_path(root) + File::SEPARATOR)
             raise PolicyViolation, "Patch edit #{edit.path.inspect} escapes the workspace root."
+          end
+          if (link = symlink_on_path(root, edit.path))
+            raise PolicyViolation, "Patch edit #{edit.path.inspect} would write through the symlink #{link}."
           end
 
           if edit.delete?
@@ -54,6 +60,15 @@ module Reanimator
 
       def to_h
         {edits: edits.map { |e| {path: e.path, delete: e.delete?} }}
+      end
+
+      private
+
+      # The first component of a repository-relative path that is a symlink, or nil.
+      def symlink_on_path(root, relative)
+        parts = relative.split("/")
+        (1..parts.size).map { |n| parts.first(n).join("/") }
+          .find { |prefix| File.symlink?(File.join(root, prefix)) }
       end
     end
   end

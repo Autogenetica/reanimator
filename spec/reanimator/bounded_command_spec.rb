@@ -13,6 +13,18 @@ RSpec.describe Reanimator::BoundedCommand do
     expect(result.output).to include("yes")
   end
 
+  it "refuses to run repository code while this process holds the submission token" do
+    original = ENV.fetch("REANIMATOR_GITHUB_TOKEN", nil)
+    ENV["REANIMATOR_GITHUB_TOKEN"] = "secret"
+    marker = File.join(make_repo(files: {}), "ran")
+
+    expect { described_class.run("touch #{marker}", chdir: Dir.pwd, timeout: 10) }
+      .to raise_error(Reanimator::PolicyViolation, /only `reanimator submit`/)
+    expect(File.exist?(marker)).to be(false)
+  ensure
+    ENV["REANIMATOR_GITHUB_TOKEN"] = original
+  end
+
   it "treats a nonzero exit as failure" do
     result = described_class.run("exit 3", chdir: Dir.pwd, timeout: 10)
     expect(result).not_to be_success

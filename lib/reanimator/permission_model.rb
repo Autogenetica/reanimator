@@ -8,11 +8,21 @@ module Reanimator
   # repository has not enabled submit, the resolved action is off. Merge is
   # always off in v1.
   class PermissionModel
+    # Submit policies that may open a pull request. `:issue` may only open an
+    # issue, so it does not qualify.
+    PULL_REQUEST_POLICIES = %i[allowed draft draft_elevated].freeze
+
     # The resolved decision for one task against one contract.
     Resolution = Struct.new(:task_class, :actions, :elevated_review, :max_action) do
-      def elevated_review? = elevated_review
-
       def permits?(level) = actions.fetch(level.to_sym, :off) != :off
+
+      def submit_policy = actions.fetch(:submit, :off)
+
+      def opens_pull_requests? = PULL_REQUEST_POLICIES.include?(submit_policy)
+
+      # A draft_elevated submit policy demands elevated review even when the
+      # task class and contract would not.
+      def elevated_review? = elevated_review || submit_policy == :draft_elevated
     end
 
     def initialize(contract)
