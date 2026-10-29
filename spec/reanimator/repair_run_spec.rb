@@ -4,9 +4,8 @@ BROKEN_LIB = "module Calc\n  module_function\n  def add(a, b)\n    a - b\n  end\
 CHECK = %(require "calc"\nraise "broken" unless Calc.add(2, 2) == 4\n)
 
 RSpec.describe Reanimator::RepairRun do
-  def broken_repo(repair: :disabled, submit: false)
+  def broken_repo(repair: :disabled)
     autonomy = (repair == :disabled) ? "" : "autonomy:\n  repair: allowed\n"
-    autonomy += "  submit: allowed\n" if submit
     make_repo(files: {
       "lib/calc.rb" => BROKEN_LIB,
       "check.rb" => CHECK,
@@ -72,65 +71,6 @@ RSpec.describe Reanimator::RepairRun do
     run = run_for(broken_repo(repair: :allowed))
     expect(run.outcome).to eq(:report)
     expect(run.reason).to include("did not independently verify")
-  end
-
-  describe "submission" do
-    def submitter(outcome)
-      instance_double(Reanimator::Submitter).tap { |s| allow(s).to receive(:submit).and_return(outcome) }
-    end
-
-    let(:opened) { Reanimator::Submitter::Outcome.new("https://github.com/acme/widget/pull/7", nil) }
-
-    it "does not submit unless the run asks to, even when the contract allows it" do
-      fake = submitter(opened)
-      run = run_for(broken_repo(repair: :allowed, submit: true), submitter: fake)
-
-      expect(run.outcome).to eq(:draft_pr)
-      expect(run).not_to be_submitted
-      expect(fake).not_to have_received(:submit)
-    end
-
-    it "escalates with the verified change attached when the contract has not enabled submit" do
-      fake = submitter(opened)
-      run = run_for(broken_repo(repair: :allowed), submit: true, submitter: fake)
-
-      expect(run.outcome).to eq(:escalation)
-      expect(run.reason).to include("set autonomy: submit: allowed")
-      expect(run.proposed_change).not_to be_nil
-      expect(fake).not_to have_received(:submit)
-    end
-
-    it "escalates when the task class may only open an issue" do
-      fake = submitter(opened)
-      run = run_for(broken_repo(repair: :allowed, submit: true),
-        task_class: :major_upgrade, submit: true, submitter: fake)
-
-      expect(run.outcome).to eq(:escalation)
-      expect(run.reason).to include("major_upgrade task class may only open an issue")
-      expect(fake).not_to have_received(:submit)
-    end
-
-    it "opens the draft when both the contract and the run allow it" do
-      fake = submitter(opened)
-      path = broken_repo(repair: :allowed, submit: true)
-      run = run_for(path, submit: true, submitter: fake)
-
-      expect(run.outcome).to eq(:draft_pr)
-      expect(run.pull_request_url).to eq("https://github.com/acme/widget/pull/7")
-      expect(run.wrote_to_repository?).to be(true)
-      expect(fake).to have_received(:submit).with(run.proposed_change, elevated_review: false)
-      expect(File.read(File.join(path, "lib/calc.rb"))).to include("a - b")
-      expect(Reanimator::Reports::Run.new(run).render).to include("DRAFT PR (submitted)", "Draft PR: https://github.com/acme/widget/pull/7")
-    end
-
-    it "escalates with the submitter's reason when submission is refused" do
-      refused = Reanimator::Submitter::Outcome.new(nil, "no GitHub token; set REANIMATOR_GITHUB_TOKEN")
-      run = run_for(broken_repo(repair: :allowed, submit: true), submit: true, submitter: submitter(refused))
-
-      expect(run.outcome).to eq(:escalation)
-      expect(run.reason).to eq("The repair verified but was not submitted: no GitHub token; set REANIMATOR_GITHUB_TOKEN.")
-      expect(run).not_to be_submitted
-    end
   end
 
   it "safely stops when no ready agent is available" do

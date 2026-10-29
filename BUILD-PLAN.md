@@ -142,15 +142,15 @@ unprotected. Prove it by running the CLI, not just the suite.
 
 ## Slice 2 — Wire the `submit` rung (§11) — done
 
-**Outcome (2026-10-28).** Decisions: a token from `REANIMATOR_GITHUB_TOKEN`
-(App installation token in CI, fine-grained token locally), and opt-in by both
-the contract (`autonomy: submit: allowed`) and the run (`repair --submit`).
-`Submitter` builds the draft through the GitHub API on top of the default
-branch's head, only when the local checkout is clean and at that head, and
-`BoundedCommand` withholds the token from executed checks. Every refusal
-escalates with the change attached. Proven live against a private sandbox
-repository: one draft PR, the one-line fix only, parented on the verified
-commit; a repeat run updated it. See ADR-008.
+**Outcome (2026-10-29).** Decisions: a token from `REANIMATOR_GITHUB_TOKEN`
+(App installation token in CI, fine-grained token locally), opt-in by the
+contract (`autonomy: submit: allowed`) and the run, and — after adversarial
+review showed a check can read its parent process's environment — two steps:
+`repair --propose FILE` (repairs an export of committed `HEAD`, never holds the
+token) and `submit FILE` (holds the token, runs no repository code or git).
+Proven live against a private sandbox: draft created on the verified commit,
+updated on a repeat run, and a reviewer's pushed commit and a PR marked ready
+both refused and left untouched. See ADR-008.
 
 The original brief follows.
 
@@ -279,7 +279,7 @@ have to display.
 ## Verifying you have not broken anything
 
 ```bash
-bundle exec rake                                  # 246 examples (1 pending off Linux), StandardRB
+bundle exec rake                                  # 259 examples (1 pending off Linux), StandardRB
 bundle exec exe/reanimator baseline . --execute    # ALIVE — 100% (3/3)
 bundle exec exe/reanimator contract .              # posture, criteria, protected paths
 bundle exec exe/reanimator drift .                 # obligations, or drift if recorded

@@ -36,10 +36,14 @@ disclosure timeline.
   are planned but not implemented: an executed check runs as the invoking user and
   can write outside its disposable copy. Treat `--execute` on untrusted
   repositories accordingly; it is off by default.
-- **The submission token stays with the submitter.** `REANIMATOR_GITHUB_TOKEN`
-  is read only by `Submitter`, never by an agent, and it is withheld from every
-  command a check executes, because repository code is untrusted. Submission
-  opens a draft pull request through the GitHub API and never writes to the
+- **The submission token never shares a process with repository code.**
+  Executed checks run as the invoking user and could read any environment
+  variable of the process that started them, so hiding the token from a child
+  would not protect it. Instead submission is two commands: `repair --propose`
+  runs repository code and refuses to start while `REANIMATOR_GITHUB_TOKEN` is
+  set, and `submit` holds the token and runs no repository code and no git — it
+  reads the proposal file and calls the GitHub API. In CI, give the token to the
+  submit step only. Submission opens draft pull requests and never writes the
   local working tree; merge stays a human decision.
 - **Non-bypassable safety floor.** No configuration layer may loosen verifier
   isolation, remove protected paths (`.reanimator.yml`, workflows, CODEOWNERS),

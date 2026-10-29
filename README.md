@@ -191,9 +191,30 @@ Every outcome is recorded as an immutable run-ledger entry (`no_op`, `report`,
 `draft_pr`, `escalation`, `safe_stop`). Submitting a proposed change to GitHub is
 a deliberate, separate step — not something repair does on its own.
 
-#### Submitting the draft — `repair --submit`
+#### Submitting the draft — `repair --propose`, then `submit`
 
-Submission is gated twice: the contract sets the ceiling, and the run arms it.
+Submission takes two commands, so the process that runs repository code never
+holds the GitHub token, and the process that holds the token runs no repository
+code:
+
+```console
+$ reanimator repair --propose change.json      # no token: repairs committed HEAD
+Outcome:  DRAFT PR (proposed, not submitted)
+Proposal written to change.json. Open it with: reanimator submit change.json
+
+$ REANIMATOR_GITHUB_TOKEN=… reanimator submit change.json
+Submission — acme/widget
+Outcome:  DRAFT PR OPENED
+Base:     a398328f618d (verified)
+Pull request: https://github.com/acme/widget/pull/2
+NOTHING WAS MERGED. NO REPOSITORY CODE RAN IN THIS PROCESS.
+```
+
+`repair --propose` repairs an export of the committed `HEAD` of the repository
+root, not the working tree, so local edits, ignored files and untracked files
+cannot make the proof pass. It refuses to run beside `REANIMATOR_GITHUB_TOKEN`,
+as does every command that executes repository code. The contract must also
+allow submission:
 
 ```yaml
 # .reanimator.yml
@@ -202,23 +223,19 @@ autonomy:
   submit: allowed
 ```
 
-```console
-$ REANIMATOR_GITHUB_TOKEN=… reanimator repair --submit
-Outcome:  DRAFT PR (submitted)
-Evidence: at_risk → alive
-Draft PR: https://github.com/acme/widget/pull/1
-  branch: reanimator/repair-arithmetic-901cec8a
-SUBMITTED AS A DRAFT PULL REQUEST. THE LOCAL WORKING TREE WAS NOT MODIFIED; NOTHING WAS MERGED.
-```
+`submit` talks only to the GitHub API. The token needs `contents: write` and
+`pull_requests: write` on that repository only — a GitHub App installation
+token in CI, given to the submit step alone, or a fine-grained token locally.
+It opens a draft on top of the verified commit and refuses, saying whether a
+branch was already written, when:
 
-The token needs `contents: write` and `pull_requests: write` on that repository
-only — a GitHub App installation token in CI, or a fine-grained token locally.
-The pull request is built through the GitHub API on top of the default branch,
-and only when your checkout is clean and at that branch's head, so it contains
-exactly the tree that was verified. A repeat run moves the same branch and
-updates the same pull request. Anything that blocks submission — the contract
-not enabling it, no token, a dirty or diverged checkout, GitHub refusing —
-escalates with the verified change attached.
+- the contract did not allow submission, or the origin is not github.com;
+- the default branch has moved past the verified commit;
+- the `reanimator/` branch has commits Reanimator did not write;
+- the open pull request was marked ready for review.
+
+A repeat run moves Reanimator's own branch and updates its own draft. Nothing is
+ever marked ready or merged.
 
 ### Repository families — `families` and `gates`
 
@@ -503,7 +520,7 @@ Two rules are **enforced**, not just documented:
 | 18 MVP slices 1–4 | ✅ Inventory→baseline→commissioning→bounded repair |
 | 10 Repository families & compatibility graphs | ✅ `Relationship`, `Family`, `FamilyInference`, `Family::GateRunner` |
 | 12 Security controls | ✅ `SecurityControl`, `SecurityPosture#obligations`, `Evaluators::SecurityEvidence`, `EgressControl` (denied egress enforced on Linux, refused elsewhere; the balanced registry allowlist is advisory) |
-| 11 Submit rung (draft-PR submission) | ✅ `Submitter`, `GitHubClient`, `repair --submit` (contract ceiling + per-run flag; draft only) |
+| 11 Submit rung (draft-PR submission) | ✅ `repair --propose` → `Proposal` → `submit` (`Submitter`, `GitHubClient`); token never beside repository code; draft only |
 | GitHub App, web UI | ⏳ Explicitly later (spec sections 03, 18) |
 
 See [`.architecture/decisions`](.architecture/decisions) for the reasoning

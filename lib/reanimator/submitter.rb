@@ -1,121 +1,152 @@
 # frozen_string_literal: true
 
 module Reanimator
-  # Opens a verified {ProposedChange} as a draft pull request (specification
-  # section 11, the submit rung). It is deliberately separate from every agent,
-  # mirroring verifier isolation: an agent proposes a patch and never holds the
-  # credential; this component decides whether that patch leaves the machine.
+  # Opens a {Proposal} as a draft pull request (specification section 11, the
+  # submit rung). It is the only reader of the GitHub token, and it runs no
+  # repository code and no git: everything it needs is in the proposal, and
+  # everything it does is a GitHub API call. That separation is the point -
+  # untrusted repository code never shares a process with the credential.
   #
-  # It writes nothing locally. The branch is built through the GitHub API on
-  # top of the default branch's head, and only when that head is exactly the
-  # commit the repair was verified against - otherwise the pull request would
-  # contain a tree nobody verified, so it refuses instead. Pull requests are
-  # always drafts in v1; merge stays a human decision.
+  # It ships only what was verified and never overwrites people:
+  # - the default branch must still be at the commit the repair was verified
+  #   against, or the pull request would carry an unverified tree;
+  # - an existing reanimator/ branch is moved only while its tip is a commit
+  #   Reanimator wrote, so work a reviewer pushed there is never discarded;
+  # - an open pull request is updated only while it is still a draft, so new
+  #   unreviewed commits never land in one a human marked ready.
   #
-  # Every refusal is an {Outcome} with a reason, never an exception, so the
-  # caller can escalate with the verified change still attached.
+  # Every refusal is an {Outcome} with a reason, never an exception, and it
+  # says whether a branch had already been written.
   class Submitter
-    Outcome = Struct.new(:url, :reason) do
+    Outcome = Struct.new(:url, :reason, :branch_written) do
       def submitted? = !url.nil?
+
+      def branch_written? = branch_written
     end
 
+    HOST = "github.com"
     SLUG = %r{\A[\w.-]+/[\w.-]+\z}
+    # Marks commits Reanimator wrote, so a repeat run can tell its own branch
+    # tip from a reviewer's.
+    TRAILER = "Generated-by: reanimator"
 
     ELEVATED_NOTE = "**Elevated review.** This repository's contract includes verifier or " \
                     "contract-touching criteria, so this change needs a reviewer who can judge the " \
                     "rules of proof, not only the code."
 
-    # @param repository [Repository]
     # @param client [#get, #post, #patch, nil] injected in specs; built from
     #   the token otherwise
-    # @param token [String, nil]
-    def initialize(repository, client: nil, token: ENV[Configuration::GITHUB_TOKEN_ENV])
-      @repository = repository
+    def initialize(client: nil, token: ENV[Configuration::GITHUB_TOKEN_ENV])
       @client = client || (GitHubClient.new(token: token) unless token.to_s.empty?)
+      @branch_written = false
     end
 
-    # @param change [ProposedChange]
-    # @param elevated_review [Boolean]
+    # @param proposal [Proposal]
     # @return [Outcome]
-    def submit(change, elevated_review: false)
+    def submit(proposal)
+      @proposal = proposal
+      @branch_written = false
       reason = precondition_failure
       return refused(reason) if reason
 
-      base, head = default_branch_head
-      unless head == Git.head_sha(@repository.path)
-        return refused("the local checkout is not at #{slug}@#{base} (#{head[0, 12]}), so the pull " \
-                       "request would not contain the tree that was verified")
-      end
+      base = verified_base_branch or return refused(moved_reason)
+      pull = open_pull
+      return refused("pull request #{pull.fetch("html_url")} was marked ready for review; not adding unreviewed commits") if pull && !pull.fetch("draft")
 
-      commit = commit_patch(change, head)
-      point_branch(change.branch, commit)
-      Outcome.new(open_draft(change, base, elevated_review), nil)
+      branch_reason = foreign_branch_reason
+      return refused(branch_reason) if branch_reason
+
+      commit = commit_patch
+      point_branch(commit)
+      Outcome.new(publish(pull, base), nil, true)
     rescue GitHubClient::Error => e
       refused(e.message)
+    rescue KeyError, TypeError, NoMethodError => e
+      refused("GitHub returned an unexpected response (#{e.message})")
     end
 
     private
 
     def precondition_failure
       return "no GitHub token; set #{Configuration::GITHUB_TOKEN_ENV}" unless @client
-      return "#{@repository.full_name.inspect} is not an owner/name GitHub repository" unless SLUG.match?(slug.to_s)
-      return "the repository is not a git checkout" unless Git.repository?(@repository.path)
-      return if Git.clean?(@repository.path)
+      return "Submission is not allowed: #{@proposal.blocker}" unless @proposal.submittable?
+      return "the proposal's origin is on #{@proposal.host.inspect}, not #{HOST}" unless @proposal.host == HOST
 
-      "the working tree has uncommitted changes, so what was verified is not what is committed"
+      "#{@proposal.slug.inspect} is not an owner/name GitHub repository" unless SLUG.match?(@proposal.slug.to_s)
     end
 
-    def slug = @repository.full_name
+    def repo = "/repos/#{@proposal.slug}"
 
-    def default_branch_head
-      base = @client.get("/repos/#{slug}")["default_branch"]
-      [base, @client.get("/repos/#{slug}/git/ref/heads/#{base}").dig("object", "sha")]
+    # The default branch, when its head is still the verified commit.
+    def verified_base_branch
+      @base = @client.get(repo).fetch("default_branch")
+      @head = @client.get("#{repo}/git/ref/heads/#{GitHubClient.escape(@base)}").fetch("object").fetch("sha")
+      @base if @head == @proposal.base
     end
 
-    # One commit on top of the verified head holding exactly the patch.
-    def commit_patch(change, head)
-      base_tree = @client.get("/repos/#{slug}/git/commits/#{head}").dig("tree", "sha")
-      tree = @client.post("/repos/#{slug}/git/trees", base_tree: base_tree, tree: entries(change.patch))
-      @client.post("/repos/#{slug}/git/commits",
-        message: change.title, tree: tree["sha"], parents: [head])["sha"]
+    def moved_reason
+      "#{@proposal.slug}@#{@base} is at #{@head.to_s[0, 12]}, not the verified #{@proposal.base[0, 12]}; " \
+        "propose again from the current head"
     end
 
-    def entries(patch)
-      patch.edits.map do |edit|
-        entry = {path: edit.path, mode: mode(edit.path), type: "blob"}
-        edit.delete? ? entry.merge(sha: nil) : entry.merge(content: edit.contents)
-      end
+    def open_pull
+      owner = @proposal.slug.split("/").first
+      @client.get("#{repo}/pulls?state=open&head=#{GitHubClient.escape("#{owner}:#{@proposal.branch}")}").first
     end
 
-    def mode(path)
-      File.executable?(File.join(@repository.path, path)) ? "100755" : "100644"
-    end
+    def branch_ref = "#{repo}/git/ref/heads/#{GitHubClient.escape(@proposal.branch)}"
 
-    # The branch name is deterministic per repair, so a repeat run moves the
-    # same branch rather than opening a second one.
-    def point_branch(branch, commit)
-      @client.post("/repos/#{slug}/git/refs", ref: "refs/heads/#{branch}", sha: commit)
+    # Why the existing branch must not be moved, or nil when it is absent or
+    # its tip is a commit Reanimator wrote.
+    def foreign_branch_reason
+      tip = @client.get(branch_ref).fetch("object").fetch("sha")
+      message = @client.get("#{repo}/git/commits/#{tip}").fetch("message")
+      @branch_exists = true
+      return if message.include?(TRAILER)
+
+      "#{@proposal.branch} has commits Reanimator did not write (tip #{tip[0, 12]}); not overwriting them"
     rescue GitHubClient::Error => e
-      raise unless e.status == 422
+      raise unless e.status == 404
 
-      @client.patch("/repos/#{slug}/git/refs/heads/#{branch}", sha: commit, force: true)
+      @branch_exists = false
+      nil
     end
 
-    # Updates the open pull request for the branch if there is one, so a repeat
-    # run never duplicates it.
-    def open_draft(change, base, elevated_review)
-      title = elevated_review ? "[elevated review] #{change.title}" : change.title
-      body = elevated_review ? "#{change.body}\n\n#{ELEVATED_NOTE}" : change.body
-      owner = slug.split("/").first
-      existing = @client.get("/repos/#{slug}/pulls?state=open&head=#{owner}:#{change.branch}").first
-      if existing
-        @client.patch("/repos/#{slug}/pulls/#{existing["number"]}", title: title, body: body)["html_url"]
-      else
-        @client.post("/repos/#{slug}/pulls",
-          title: title, body: body, head: change.branch, base: base, draft: true)["html_url"]
+    # One commit on top of the verified head holding exactly the proposal.
+    def commit_patch
+      base_tree = @client.get("#{repo}/git/commits/#{@head}").fetch("tree").fetch("sha")
+      tree = @client.post("#{repo}/git/trees", base_tree: base_tree, tree: entries).fetch("sha")
+      @client.post("#{repo}/git/commits",
+        message: "#{@proposal.title}\n\n#{TRAILER}", tree: tree, parents: [@head]).fetch("sha")
+    end
+
+    def entries
+      @proposal.edits.map do |edit|
+        entry = {path: edit.fetch(:path), mode: edit.fetch(:mode), type: "blob"}
+        edit[:delete] ? entry.merge(sha: nil) : entry.merge(content: edit.fetch(:contents))
       end
     end
 
-    def refused(reason) = Outcome.new(nil, reason)
+    def point_branch(commit)
+      if @branch_exists
+        @client.patch("#{repo}/git/refs/heads/#{GitHubClient.escape(@proposal.branch)}", sha: commit, force: true)
+      else
+        @client.post("#{repo}/git/refs", ref: "refs/heads/#{@proposal.branch}", sha: commit)
+      end
+      @branch_written = true
+    end
+
+    def publish(pull, base)
+      title = @proposal.elevated_review ? "[elevated review] #{@proposal.title}" : @proposal.title
+      body = @proposal.elevated_review ? "#{@proposal.body}\n\n#{ELEVATED_NOTE}" : @proposal.body
+      if pull
+        @client.patch("#{repo}/pulls/#{pull.fetch("number")}", title: title, body: body).fetch("html_url")
+      else
+        @client.post("#{repo}/pulls",
+          title: title, body: body, head: @proposal.branch, base: base, draft: true).fetch("html_url")
+      end
+    end
+
+    def refused(reason) = Outcome.new(nil, reason, @branch_written)
   end
 end

@@ -36,7 +36,7 @@ changing a single line of code*. Read-only first, and read-only by default.
 
 ```bash
 bin/setup                                       # bundle install
-bundle exec rake                                # specs + StandardRB (expect 246 examples; 1 pending off Linux)
+bundle exec rake                                # specs + StandardRB (expect 259 examples; 1 pending off Linux)
 bundle exec exe/reanimator baseline . --execute  # prove this repo on itself
 bundle exec exe/reanimator contract .            # resolved contract, incl. security posture
 bundle exec exe/reanimator drift . --record      # write .reanimator-snapshot.json
@@ -56,9 +56,11 @@ changelog note explaining it.
 
 Each of these was stopped on purpose, not forgotten.
 
-1. **Submission beyond a draft PR.** `repair --submit` opens drafts (ADR-008);
-   it never marks one ready and never merges, and the safety floor keeps it so
-   in v1. It only submits from a clean checkout at the default branch's head.
+1. **Submission beyond a draft PR.** `repair --propose` then `submit` opens
+   drafts (ADR-008); it never marks one ready and never merges, and the safety
+   floor keeps it so in v1. Never give `REANIMATOR_GITHUB_TOKEN` to a process
+   that runs repository code — `BoundedCommand` refuses, and that refusal is
+   the boundary.
 2. **The rest of §12 isolation.** Denied egress is enforced or refused
    (`EgressControl`, ADR-007), but user, filesystem and resource isolation are
    not built: an executed check runs as the invoking user and can write outside

@@ -113,23 +113,47 @@ module Reanimator
       success a draft PR is materialized but NOT submitted. Nothing is written to
       the repository.
 
-      With --submit (section 11 submit rung), a verified repair is opened as a
-      draft pull request through the GitHub API - only when the contract sets
-      autonomy: submit: allowed and REANIMATOR_GITHUB_TOKEN is present, and only
-      when the local checkout is clean and at the default branch's head, so the
-      PR contains exactly the tree that was verified. Otherwise the run escalates
-      with the verified change attached. The local working tree is never
-      modified, and nothing is ever merged.
+      With --propose FILE, the repair runs against the committed HEAD of the
+      repository root rather than the working tree, and a verified change is
+      written to FILE for `reanimator submit`. This step never needs, and refuses
+      to run beside, REANIMATOR_GITHUB_TOKEN.
     DESC
     option :provider, default: "local", desc: "Provider to use (local, codex, claude, amp)"
     option :task_class, default: "patch_dependency", desc: "Task class governing autonomy"
-    option :submit, type: :boolean, default: false,
-      desc: "Open a verified repair as a draft PR (needs autonomy: submit: allowed and #{Configuration::GITHUB_TOKEN_ENV})"
+    option :propose, banner: "FILE", desc: "Repair committed HEAD and write a verified change to FILE for `submit`"
     def repair(path = Dir.pwd)
       guard do
-        run = Reanimator.repair(path, provider: options[:provider].to_sym, task_class: options[:task_class].to_sym,
-          submit: options[:submit])
-        puts Reports::Run.new(run).render
+        provider = options[:provider].to_sym
+        task_class = options[:task_class].to_sym
+        if options[:propose]
+          run, written = Reanimator.propose(path, to: options[:propose], provider: provider, task_class: task_class)
+          puts Reports::Run.new(run).render
+          puts "\nProposal written to #{written}. Open it with: reanimator submit #{written}" if written
+        else
+          puts Reports::Run.new(Reanimator.repair(path, provider: provider, task_class: task_class)).render
+        end
+      end
+    end
+
+    desc "submit PROPOSAL", "Open a proposed repair as a draft pull request"
+    long_desc <<~DESC
+      Section 11 submit rung, second step. Reads a proposal written by
+      `repair --propose` and opens it as a draft pull request through the GitHub
+      API. It runs no repository code and no git, so it is the only command that
+      should be given REANIMATOR_GITHUB_TOKEN (contents and pull-request write on
+      that repository only).
+
+      It refuses - and says whether a branch was already written - when the
+      contract did not allow submission, the default branch has moved past the
+      commit that was verified, the reanimator/ branch carries commits Reanimator
+      did not write, or the open pull request was marked ready for review. It
+      never marks a pull request ready and never merges.
+    DESC
+    def submit(proposal)
+      guard do
+        outcome = Reanimator.submit(proposal)
+        puts Reports::Submission.new(Proposal.load(proposal), outcome).render
+        exit 1 unless outcome.submitted?
       end
     end
 

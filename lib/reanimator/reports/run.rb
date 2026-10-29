@@ -19,24 +19,10 @@ module Reanimator
         @run = run
       end
 
-      def outcome_label
-        return "DRAFT PR (submitted)" if @run.submitted?
-
-        OUTCOME_LABEL.fetch(@run.outcome, @run.outcome.to_s.upcase)
-      end
-
-      # The promise the run kept, stated last. A submission wrote a branch and a
-      # draft pull request on the remote and nothing else.
-      def closing
-        return "NO SOURCE WAS WRITTEN TO THE REPOSITORY." unless @run.submitted?
-
-        "SUBMITTED AS A DRAFT PULL REQUEST. THE LOCAL WORKING TREE WAS NOT MODIFIED; NOTHING WAS MERGED."
-      end
-
       def render
         lines = [
           "Run — #{@run.repository.full_name}",
-          "Outcome:  #{outcome_label}",
+          "Outcome:  #{OUTCOME_LABEL.fetch(@run.outcome, @run.outcome.to_s.upcase)}",
           "Trigger:  #{@run.trigger}",
           "Policy:   #{@run.policy_version}"
         ]
@@ -45,7 +31,7 @@ module Reanimator
         lines << "Evidence: #{@run.pre_state} → #{@run.post_state}" if @run.post_state
         lines << "Reason:   #{@run.reason}" if @run.reason
         lines.concat(proposed_change_lines) if @run.proposed_change
-        lines << closing
+        lines << "NO SOURCE WAS WRITTEN TO THE REPOSITORY."
         lines.join("\n")
       end
 
@@ -55,7 +41,7 @@ module Reanimator
         change = @run.proposed_change
         [
           "",
-          @run.submitted? ? "Draft PR: #{@run.pull_request_url}" : "Proposed draft PR:",
+          "Proposed draft PR:",
           "  branch: #{change.branch}",
           "  title:  #{change.title}",
           "  files:  #{change.patch.paths.join(", ")}"

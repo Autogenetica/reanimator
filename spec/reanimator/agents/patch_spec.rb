@@ -20,6 +20,19 @@ RSpec.describe Reanimator::Agents::Patch do
       .to raise_error(Reanimator::PolicyViolation, /escapes/)
   end
 
+  it "refuses to write through a symlinked file or directory" do
+    outside = make_repo(files: {"target.rb" => "original"})
+    dir = make_repo(files: {})
+    File.symlink(File.join(outside, "target.rb"), File.join(dir, "linked.rb"))
+    File.symlink(outside, File.join(dir, "lib"))
+
+    expect { described_class.write("linked.rb", "x").apply(dir) }
+      .to raise_error(Reanimator::PolicyViolation, /symlink linked.rb/)
+    expect { described_class.write("lib/target.rb", "x").apply(dir) }
+      .to raise_error(Reanimator::PolicyViolation, /symlink lib/)
+    expect(File.read(File.join(outside, "target.rb"))).to eq("original")
+  end
+
   it "reports its paths and emptiness" do
     expect(described_class.new).to be_empty
     expect(described_class.write("a.rb", "x").paths).to eq(["a.rb"])

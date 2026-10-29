@@ -1,7 +1,7 @@
-# ADR-008: Submission is a separate component that ships only the verified tree
+# ADR-008: Submission is a separate process that ships only the verified tree
 
 - Status: Accepted
-- Date: 2026-10-28
+- Date: 2026-10-29
 
 ## Context
 
@@ -12,66 +12,78 @@ the invariants rather than bend them: the grader is never the actor, the safety
 floor forbids automatic merge, and anything that cannot be confirmed fails
 closed.
 
-The owner settled two questions before implementation began:
+The owner chose a token from the environment (`REANIMATOR_GITHUB_TOKEN`), so a
+GitHub App installation token can be supplied in CI and a fine-grained token
+locally, and opt-in by both the contract (`autonomy: submit: allowed`) and the
+run.
 
-- **Credential:** a token from the environment (`REANIMATOR_GITHUB_TOKEN`), so a
-  GitHub App installation token can be supplied in CI and a fine-grained token
-  locally, without building App authentication yet.
-- **Opt-in:** both. The contract's `autonomy: submit: allowed` is the ceiling;
-  `repair --submit` arms it for one run.
+The first design submitted from inside `repair --submit` and hid the token from
+executed checks. Adversarial review broke it, and every point below was
+reproduced:
+
+- A check reads the parent's environment (`ps eww`, `/proc/<ppid>/environ`), and
+  unsetting a variable does not erase the original environment block, so hiding
+  the token from the child protected nothing.
+- Verification copied the working tree, so ignored, untracked and skip-worktree
+  files could make checks pass that the pull request would not contain.
+- From a monorepo subdirectory, root-relative patch paths overwrote a different
+  file at the top of the tree.
+- A symlinked file was patched through the link locally and replaced by a
+  regular file in the pull request.
+- A repeat run force-pushed over a reviewer's commits and added commits to a pull
+  request a human had marked ready.
+- A pull request failure after the branch push was reported as "nothing written",
+  and malformed responses raised past the run.
 
 ## Decision
 
-- **A `Submitter`, outside `Agents::*`, is the only reader of the token.** It
-  mirrors verifier isolation: the agent proposes, something else decides
-  whether the proposal leaves the machine. `BoundedCommand` withholds the token
-  from every command a check runs, because those commands are repository
-  code - untrusted input.
-- **The pull request is built through the GitHub API, not local git.** Tree,
-  commit, branch and pull request are created remotely. Nothing is written to
-  the local working tree, so "repair never writes the checkout" still holds.
-- **Only the verified tree ships.** The repair is verified against the local
-  checkout, so the submitter refuses unless that checkout is clean and its HEAD
-  *is* the remote default branch's head. The commit's parent is that head. A
-  pull request built on any other base would carry changes nobody verified.
-- **Idempotent by construction.** `ProposedChange#branch` is deterministic, so
-  a repeat run force-moves the same `reanimator/…` branch and updates the open
-  pull request instead of opening another.
-- **Always a draft, never merged.** Elevated review - a contract with verifier
-  criteria, or a task class whose submit policy is `draft_elevated` - is flagged
-  in the title and body. A task class whose policy is `:issue` may not open a
-  pull request at all.
-- **Every refusal escalates with the change attached.** Contract not enabled,
-  no token, a dirty or diverged checkout, GitHub saying no: each becomes an
-  `escalation` run carrying the verified `ProposedChange`, so the work is not
-  lost and a human can pick it up.
+- **Two processes, two commands.** `repair --propose FILE` runs repository code
+  and never holds the token: `BoundedCommand` refuses to run anything while
+  `REANIMATOR_GITHUB_TOKEN` is set. `submit FILE` holds the token, runs no
+  repository code and no git, and only calls the GitHub API. The `submit`
+  command is the per-run arming; the contract is the ceiling, recorded in the
+  proposal and enforced by the submitter.
+- **Verify the commit, not the checkout.** `--propose` exports `HEAD` with
+  `git archive` and repairs that export, so what is verified is exactly the base
+  of the pull request. It refuses anything but a repository root.
+- **Ship only what was verified.** The proposal records the base commit, exact
+  contents and the committed git mode of each path; symlinks and submodules are
+  refused, and `Patch#apply` never writes through a symlink. The submitter
+  refuses unless the default branch is still at the recorded base.
+- **Never overwrite people.** Reanimator's commits carry a `Generated-by:
+  reanimator` trailer. An existing branch is moved only while its tip has it,
+  and an open pull request is updated only while it is still a draft.
+- **Say what was written.** Every refusal is an outcome with a reason and
+  whether a branch was already pushed. Transport and parse failures become
+  refusals.
+- **Always a draft, never merged.** Elevated review is flagged in the title and
+  body; an `:issue`-only task class may not open a pull request.
 
 ## Alternatives considered
 
-- **Local git: create a branch, commit, push.** Rejected. It writes the working
-  tree and branch list the tool promises not to touch, needs push credentials
-  in the git layer where repository hooks can see them, and depends on the
-  user's git configuration.
+- **One process, token hidden from children** - the first design. Rejected for
+  the reason above: same-user code can read the parent's environment.
+- **One process that refuses to execute when the token is set.** Equivalent in
+  effect to two steps, with a worse error path; the two-step shape makes the
+  boundary visible in the command line and in CI step layout.
+- **Local git: branch, commit, push.** Rejected. It writes the working tree the
+  tool promises not to touch and needs push credentials where repository hooks
+  can see them.
 - **Shell out to `gh pr create`.** Rejected. The credential is whatever `gh` is
-  logged in as - usually the user's broad personal token - which cannot be
-  scoped to the submit rung or audited as Reanimator's.
-- **Submit on top of the remote head whatever the local state.** Rejected. The
-  patch holds whole-file contents verified against the local tree; applied to a
-  different base, it can silently revert newer changes in the same files.
-- **Raise on submission failure.** Rejected: an exception loses the verified
-  change. A run with an `escalation` outcome keeps it.
+  logged in as, usually the user's broad personal token.
+- **A cleanliness check instead of an export.** Rejected: `git status` cannot
+  see ignored or skip-worktree files, and checking before copying races.
 - **Fall back to `GITHUB_TOKEN`.** Rejected. A token present for other reasons
-  should not silently become a write credential; the dedicated variable is the
-  opt-in.
+  should not silently become a write credential.
 
 ## Consequences
 
-- Submission needs a clean checkout at the default branch's head. Repairing a
-  feature branch, or a checkout with local edits, escalates rather than submits.
-- `Run#wrote_to_repository?` is now true exactly when a pull request was
-  opened, and the run report says what was written and what was not.
-- Proven against a live private repository: a draft pull request containing
-  only the one-line fix, its commit parented on the verified head, and a repeat
-  run that updated the same pull request.
-- A GitHub App (Slice 5) can mint installation tokens into the same
-  environment variable without changing the submitter.
+- Submitting takes two steps, and in CI the token belongs to the second step
+  only.
+- Uncommitted work is ignored by `--propose`; commit first to have it verified.
+- Proven against a live private sandbox: a draft pull request containing only
+  the one-line fix on the verified commit; a repeat run updated the same draft;
+  a reviewer's pushed commit and a pull request marked ready were both refused
+  and left untouched.
+- A GitHub App (Slice 5) can mint installation tokens into the same variable
+  for the submit step without changing the submitter.

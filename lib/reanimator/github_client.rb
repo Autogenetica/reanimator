@@ -27,6 +27,12 @@ module Reanimator
       @api = api
     end
 
+    # Percent-encodes text for a URL path or query, keeping the slashes that
+    # branch names and refs legitimately contain.
+    def self.escape(text)
+      URI.encode_www_form_component(text.to_s).gsub("%2F", "/").gsub("+", "%20")
+    end
+
     def get(path) = request(Net::HTTP::Get, path)
 
     def post(path, body) = request(Net::HTTP::Post, path, body)
@@ -42,8 +48,12 @@ module Reanimator
         http.request(build(verb, uri, body))
       end
       parse(response, verb, path)
-    rescue SocketError, SystemCallError, Net::OpenTimeout, Net::ReadTimeout => e
-      raise Error, "GitHub #{verb::METHOD} #{path} could not be reached: #{e.message}"
+    rescue Error
+      raise
+    rescue => e
+      # Transport and parsing failures (TLS, timeouts, an HTML error page
+      # where JSON was promised) are refusals, never crashes that lose the run.
+      raise Error, "GitHub #{verb::METHOD} #{path} failed: #{e.class}: #{e.message}"
     end
 
     def build(verb, uri, body)
