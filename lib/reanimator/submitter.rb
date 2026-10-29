@@ -46,19 +46,11 @@ module Reanimator
     def submit(proposal)
       @proposal = proposal
       @branch_written = false
-      reason = precondition_failure
+      reason = obstacle
       return refused(reason) if reason
 
-      base = verified_base_branch or return refused(moved_reason)
-      pull = open_pull
-      return refused("pull request #{pull.fetch("html_url")} was marked ready for review; not adding unreviewed commits") if pull && !pull.fetch("draft")
-
-      branch_reason = foreign_branch_reason
-      return refused(branch_reason) if branch_reason
-
-      commit = commit_patch
-      point_branch(commit)
-      Outcome.new(publish(pull, base), nil, true)
+      point_branch(commit_patch)
+      Outcome.new(publish, nil, true)
     rescue GitHubClient::Error => e
       refused(e.message)
     rescue KeyError, TypeError, NoMethodError => e
@@ -75,23 +67,32 @@ module Reanimator
       "#{@proposal.slug.inspect} is not an owner/name GitHub repository" unless SLUG.match?(@proposal.slug.to_s)
     end
 
-    def repo = "/repos/#{@proposal.slug}"
-
-    # The default branch, when its head is still the verified commit.
-    def verified_base_branch
-      @base = @client.get(repo).fetch("default_branch")
-      @head = @client.get("#{repo}/git/ref/heads/#{GitHubClient.escape(@base)}").fetch("object").fetch("sha")
-      @base if @head == @proposal.base
+    # The first reason this proposal must not be submitted, or nil. Checked in
+    # order, so nothing is asked of GitHub once an earlier check refuses.
+    def obstacle
+      precondition_failure || moved_base_reason || ready_pull_reason || foreign_branch_reason
     end
 
-    def moved_reason
+    def repo = "/repos/#{@proposal.slug}"
+
+    # Why the default branch no longer stands where the repair was verified,
+    # or nil when its head is still the verified commit.
+    def moved_base_reason
+      @base = @client.get(repo).fetch("default_branch")
+      @head = @client.get("#{repo}/git/ref/heads/#{GitHubClient.escape(@base)}").fetch("object").fetch("sha")
+      return if @head == @proposal.base
+
       "#{@proposal.slug}@#{@base} is at #{@head.to_s[0, 12]}, not the verified #{@proposal.base[0, 12]}; " \
         "propose again from the current head"
     end
 
-    def open_pull
+    # Why the open pull request must not receive commits, or nil.
+    def ready_pull_reason
       owner = @proposal.slug.split("/").first
-      @client.get("#{repo}/pulls?state=open&head=#{GitHubClient.escape("#{owner}:#{@proposal.branch}")}").first
+      @pull = @client.get("#{repo}/pulls?state=open&head=#{GitHubClient.escape("#{owner}:#{@proposal.branch}")}").first
+      return if @pull.nil? || @pull.fetch("draft")
+
+      "pull request #{@pull.fetch("html_url")} was marked ready for review; not adding unreviewed commits"
     end
 
     def branch_ref = "#{repo}/git/ref/heads/#{GitHubClient.escape(@proposal.branch)}"
@@ -136,14 +137,14 @@ module Reanimator
       @branch_written = true
     end
 
-    def publish(pull, base)
+    def publish
       title = @proposal.elevated_review ? "[elevated review] #{@proposal.title}" : @proposal.title
       body = @proposal.elevated_review ? "#{@proposal.body}\n\n#{ELEVATED_NOTE}" : @proposal.body
-      if pull
-        @client.patch("#{repo}/pulls/#{pull.fetch("number")}", title: title, body: body).fetch("html_url")
+      if @pull
+        @client.patch("#{repo}/pulls/#{@pull.fetch("number")}", title: title, body: body).fetch("html_url")
       else
         @client.post("#{repo}/pulls",
-          title: title, body: body, head: @proposal.branch, base: base, draft: true).fetch("html_url")
+          title: title, body: body, head: @proposal.branch, base: @base, draft: true).fetch("html_url")
       end
     end
 
