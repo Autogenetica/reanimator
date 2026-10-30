@@ -193,6 +193,37 @@ RSpec.describe "escalation delivery" do
       expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow)).status).to eq(:missing_evidence)
     end
 
+    it "takes the lowest floor across every mention, so a stray one cannot hide a narrowing" do
+      real = "  s.required_ruby_version = \">= 3.1\"\n"
+      shapes = {
+        "=begin block" => "=begin\n  s.required_ruby_version = \">= 3.4\"\n=end\n#{real}",
+        "earlier trailing comment" => "  s.name = \"w\" # next: required_ruby_version \">= 3.4\"\n#{real}",
+        "description" => "  s.description = \"Needs required_ruby_version >= \\\"3.4\\\" soon\"\n#{real}"
+      }
+      shapes.each do |shape, lines|
+        gemspec = "Gem::Specification.new do |s|\n#{lines}end\n"
+        files = gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge("widget.gemspec" => gemspec)
+        expect(support_result(files).status).to eq(:missing_evidence), shape
+      end
+    end
+
+    it "matches exclude values loosely - case aside, and 7.0 as 7" do
+      by_case = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.1\", \"3.4\"]\n        os: [ubuntu-latest]\n" \
+        "        exclude:\n          - ruby: \"3.1\"\n            os: Ubuntu-Latest\n"
+      by_number = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.1\", \"3.4\"]\n        rails: [7.0]\n" \
+        "        exclude:\n          - ruby: \"3.1\"\n            rails: 7\n"
+
+      [by_case, by_number].each do |workflow|
+        expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow)).status).to eq(:missing_evidence)
+      end
+    end
+
+    it "does not credit a job switched off with if: false" do
+      workflow = "jobs:\n  test:\n    strategy:\n      matrix:\n        ruby: [\"3.4\"]\n" \
+        "  legacy:\n    if: false\n    strategy:\n      matrix:\n        ruby: [\"3.1\"]\n"
+      expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow)).status).to eq(:missing_evidence)
+    end
+
     it "does not read the floor from a commented-out line" do
       gemspec = "Gem::Specification.new do |s|\n  # required_ruby_version was bumped from \"3.3\"\n  s.required_ruby_version = \">= 3.1\"\nend\n"
       expect(support_result(narrowed_support.merge("widget.gemspec" => gemspec)).status).to eq(:missing_evidence)

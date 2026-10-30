@@ -46,26 +46,34 @@ module Reanimator
         repository.exist?("Gemfile") ? "Gemfile" : first_path("*.gemspec")
       end
 
-      # Every quoted requirement on the required_ruby_version line, so
-      # [">= 3.1", "< 4"] and Gem::Requirement.new(">= 3.1") are read as the
-      # requirements they are; an unquoted value is taken as written.
+      # Every quoted requirement on any line that sets or mentions
+      # required_ruby_version, so [">= 3.1", "< 4"] and
+      # Gem::Requirement.new(">= 3.1") are read as the requirements they are.
+      # A mention that is not the real assignment - in a =begin block, a
+      # comment after other code, a description - can only add a floor, and
+      # the lowest floor wins, so a stray mention can only under-credit. An
+      # unquoted value is taken as written.
       def gemspec_requirements(body, match)
-        quoted = requirement_text(body).scan(/["']([^"']+)["']/).flatten
-        quoted.empty? ? [match[1].strip] : quoted.map(&:strip)
+        quoted = requirement_texts(body).flat_map { |text| text.scan(/["']([^"']+)["']/).flatten }
+        quoted.empty? ? [match[1].strip] : quoted.map(&:strip).uniq
       end
 
-      # The required_ruby_version expression, without trailing comments, and
-      # through the closing bracket when an array spans several lines.
-      def requirement_text(body)
-        lines = body.lines.drop_while { |l| l.lstrip.start_with?("#") || !l.include?("required_ruby_version") }
-        return "" if lines.empty?
+      # The text from each mention of required_ruby_version, through the
+      # closing bracket when an array spans several lines, without the
+      # comment that may trail it. Lines that are wholly comments are skipped.
+      def requirement_texts(body)
+        lines = body.lines
+        lines.each_index.filter_map do |index|
+          line = lines[index]
+          next if line.lstrip.start_with?("#") || !line.include?("required_ruby_version")
 
-        text = lines.first[/required_ruby_version.*/m]
-        if text.include?("[") && !text.include?("]")
-          rest = lines.drop(1)
-          text += rest[0..(rest.index { |l| l.include?("]") } || -1)].join
+          text = line[/required_ruby_version.*/m]
+          if text.include?("[") && !text.include?("]")
+            rest = lines.drop(index + 1)
+            text += rest[0..(rest.index { |l| l.include?("]") } || -1)].join
+          end
+          text.lines.map { |l| l.sub(/\s+#.*$/, "") }.join
         end
-        text.lines.map { |l| l.sub(/\s+#.*$/, "") }.join
       end
 
       # @return [Array<Pin>] de-duplicated runtime pins, strongest source first

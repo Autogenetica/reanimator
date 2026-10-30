@@ -47,8 +47,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   A workflow Reanimator cannot read (YAML aliases, which it refuses to expand,
   or invalid YAML) is named in the result but never softens it: the readable
   workflows decide, so a narrowing they prove still blocks, and an aliased
-  workflow's Rubies are simply not counted. Commented-out gemspec lines do not
-  set the floor, and exclude keys match regardless of case. Gemspec requirements written as arrays — on one
+  workflow's Rubies are simply not counted. The declared floor is the lowest
+  across every mention of `required_ruby_version`, so a stray one (a
+  `=begin` block, a comment, a description) can only under-credit. Exclude
+  keys and values match loosely (case aside, `7.0` as `7`), a job with a
+  literal `if: false` is not credited, and — as before — a workflow that only
+  runs on manual dispatch is still read. Gemspec requirements written as arrays — on one
   line or several — or `Gem::Requirement.new(...)` are read; `>= 0` sets no
   floor.
 - **An unquoted whole-number Ruby in a matrix reads as a bare major.** YAML

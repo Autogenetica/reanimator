@@ -33,8 +33,8 @@ module Reanimator
 
       private
 
-      # A workflow Reanimator could not read is named, never silently left out,
-      # but it does not soften the verdict: the readable workflows decide, so a
+      # A workflow Reanimator could not read is named in any verdict short of
+      # verified (where it cannot matter), but it does not soften the verdict: the readable workflows decide, so a
       # narrowing they prove still blocks, and an unread workflow can only mean
       # Reanimator under-credits - the safe direction. Invalid YAML does not run
       # in Actions either; one using YAML aliases does, and its Rubies are

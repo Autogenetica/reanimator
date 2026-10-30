@@ -54,7 +54,7 @@ module Reanimator
       def ruby_matrix_facts(workflows)
         workflows.filter_map do |path|
           jobs, = read(path)
-          versions = Array(jobs).flat_map { |job| matrix_rubies(job) }.uniq
+          versions = Array(jobs).reject { |job| disabled?(job) }.flat_map { |job| matrix_rubies(job) }.uniq
           next if versions.empty?
 
           fact(:ci_ruby_matrix, category: :support_matrix,
@@ -62,6 +62,10 @@ module Reanimator
             value: versions, confidence: :high, source: path, method: :yaml_matrix, detail: versions.join(", "))
         end
       end
+
+      # A job switched off with a literal `if: false` never runs, so its matrix
+      # is not evidence.
+      def disabled?(job) = [false, "false"].include?(job["if"])
 
       # Workflows Reanimator could not read, and why, so a missing matrix is
       # reported as its gap rather than as untested support.
@@ -151,9 +155,17 @@ module Reanimator
         rubies.select do |ruby|
           combinations(others).any? do |combination|
             combination = combination.merge(key => ruby)
-            excludes.none? { |entry| entry.all? { |k, v| value_of(combination, k).to_s == v.to_s } }
+            excludes.none? { |entry| entry.all? { |k, v| same_value?(value_of(combination, k), v) } }
           end
         end
+      end
+
+      # Whether a matrix value and an exclude value name the same thing.
+      # Compared loosely - case aside, and 7.0 as 7, the way Actions renders
+      # numbers - because a looser match can only under-credit.
+      def same_value?(value, excluded)
+        normal = ->(item) { ruby_label(item).downcase }
+        normal.call(value) == normal.call(excluded)
       end
 
       # A combination's value for an exclude key. Keys are compared without

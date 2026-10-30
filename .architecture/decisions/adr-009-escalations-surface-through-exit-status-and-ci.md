@@ -72,7 +72,11 @@ tested only 3.3 and 3.4 read as verified.
   never softens it: the readable workflows decide, so a narrowing they prove
   still blocks. (Turning such results into `unavailable` was tried and
   reverted: one unrelated aliased workflow silenced a required check.) Drift
-  snapshots record the same matrix union the evaluator reads. Regex parsing
+  snapshots record the same matrix union the evaluator reads. Wherever a
+  reading is ambiguous - several mentions of the gemspec floor, loosely
+  equal exclude values - the choice that can only under-credit is taken.
+  Known limitation: a workflow that only runs on manual dispatch is still
+  read as CI, as before; a job with a literal `if: false` is not. Regex parsing
   was tried first; three reviews each found new false results, and two more
   found gaps in the YAML reader, each closed in the fail-closed direction.
 
