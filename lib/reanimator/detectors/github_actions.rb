@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "date"
 require "yaml"
 
 module Reanimator
@@ -39,7 +40,7 @@ module Reanimator
         ]
 
         facts.concat(ruby_matrix_facts(workflows))
-        facts.concat(pinned_ruby_facts(workflows))
+        facts.concat(unreadable_facts(workflows))
         facts.concat(security_facts(workflows))
         facts
       end
@@ -47,9 +48,13 @@ module Reanimator
       private
 
       # One fact per workflow, holding every Ruby its jobs' matrices exercise.
+      # A single job's pinned Ruby is not read: a lint or release job pinned to
+      # one version cannot stand in for the tests, and from the workflow alone
+      # there is no telling which job is which.
       def ruby_matrix_facts(workflows)
         workflows.filter_map do |path|
-          versions = jobs(path).flat_map { |job| matrix_rubies(job) }.uniq
+          jobs, = read(path)
+          versions = Array(jobs).flat_map { |job| matrix_rubies(job) }.uniq
           next if versions.empty?
 
           fact(:ci_ruby_matrix, category: :support_matrix,
@@ -58,31 +63,35 @@ module Reanimator
         end
       end
 
-      # Rubies pinned by a single job's ruby/setup-ruby step. A matrix is the
-      # stronger evidence - a lint job pinned to one Ruby must not stand in for
-      # it - so SupportMatrix reads these only when no workflow has a matrix.
-      def pinned_ruby_facts(workflows)
+      # Workflows Reanimator could not read, and why, so a missing matrix is
+      # reported as its gap rather than as untested support.
+      def unreadable_facts(workflows)
         workflows.filter_map do |path|
-          versions = jobs(path).flat_map { |job| pinned_rubies(job) }.uniq
-          next if versions.empty?
+          _jobs, reason = read(path)
+          next unless reason
 
-          fact(:ci_ruby_pinned, category: :support_matrix,
-            claim: "A CI job runs Ruby: #{versions.join(", ")}.",
-            value: versions, confidence: :medium, source: path, method: :yaml_setup_ruby, detail: versions.join(", "))
+          fact(:ci_workflow_unreadable, category: :support_matrix,
+            claim: "#{path} could not be read: #{reason}.", value: reason,
+            confidence: :high, source: path, method: :yaml_matrix, detail: reason)
         end
       end
 
-      # The workflow's jobs, read as YAML. Comments and malformed files give
-      # nothing, and so do YAML aliases: a workflow is repository input, and an
-      # alias bomb would otherwise be expanded while reading it. A workflow that
-      # does not parse yields no evidence rather than a guess.
-      def jobs(path)
-        body = repository.read(path)
-        document = body && YAML.safe_load(body, aliases: false)
-        jobs = document.is_a?(Hash) ? document["jobs"] : nil
-        jobs.is_a?(Hash) ? jobs.values.grep(Hash) : []
-      rescue Psych::Exception
-        []
+      # The workflow's jobs, read as YAML, or nil and the reason it could not
+      # be read. YAML aliases are refused - a workflow is repository input, and
+      # an alias bomb would be expanded while reading it - and so is nesting
+      # deep enough to exhaust the stack. Dates and symbols are read the way
+      # the contract file reads them.
+      def read(path)
+        @read ||= {}
+        @read[path] ||= begin
+          document = YAML.safe_load(repository.read(path).to_s, permitted_classes: [Date, Time, Symbol], aliases: false)
+          jobs = document.is_a?(Hash) ? document["jobs"] : nil
+          [jobs.is_a?(Hash) ? jobs.values.grep(Hash) : []]
+        rescue Psych::BadAlias
+          [nil, "it uses YAML aliases, which Reanimator does not expand"]
+        rescue Psych::Exception, SystemStackError => e
+          [nil, "it is not valid YAML (#{e.class.name.split("::").last})"]
+        end
       end
 
       # Every Ruby a job's strategy.matrix actually runs: its Ruby list less
@@ -97,19 +106,25 @@ module Reanimator
         (listed + included_rubies(matrix)).map { |value| ruby_label(value) }
       end
 
+      # Whether the exclusions can be read as data. One written as an
+      # expression is only known while the workflow runs, so it could remove
+      # any Ruby; crediting the list anyway would fail open.
+      def opaque_exclusions?(matrix)
+        excludes = matrix["exclude"]
+        return false if excludes.nil?
+        return true unless excludes.is_a?(Array)
+
+        excludes.any? { |entry| !entry.is_a?(Hash) || entry.values.any? { |v| v.is_a?(String) && v.include?("${{") } }
+      end
+
       def included_rubies(matrix)
         Array(matrix["include"]).grep(Hash).flat_map { |entry| RUBY_KEYS.flat_map { |key| scalars(entry[key]) } }
       end
 
-      def pinned_rubies(job)
-        Array(job["steps"]).grep(Hash)
-          .select { |step| step["uses"].to_s.start_with?("ruby/setup-ruby") && step["with"].is_a?(Hash) }
-          .flat_map { |step| scalars(step["with"]["ruby-version"]) }
-          .map { |value| ruby_label(value) }
-      end
-
       # The rubies at least one surviving combination still runs.
       def surviving(matrix, key, rubies)
+        return [] if opaque_exclusions?(matrix)
+
         excludes = Array(matrix["exclude"]).grep(Hash)
         return rubies if excludes.empty?
 

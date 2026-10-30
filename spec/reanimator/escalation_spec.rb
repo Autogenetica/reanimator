@@ -6,6 +6,9 @@ require "open3"
 # terminal. The CLI's exit status carries it everywhere; inside GitHub Actions
 # it also becomes one annotation per finding and a job-summary entry - and
 # nothing the repository writes can forge or silence either.
+# Subprocess specs must not inherit a real CI job's Actions variables.
+QUIET_CI = {"GITHUB_ACTIONS" => nil, "GITHUB_STEP_SUMMARY" => nil}.freeze
+
 RSpec.describe "escalation delivery" do
   def gem_with(requirement:, matrix: %w[3.3 3.4], workflow: nil)
     inline = matrix.map { |v| "\"#{v}\"" }.join(", ")
@@ -103,7 +106,7 @@ RSpec.describe "escalation delivery" do
       bare = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.1\", \"3.4\"]\n        exclude:\n          - ruby: \"3.1\"\n"
       with_os = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.1\", \"3.4\"]\n        os: [ubuntu-latest, macos-latest]\n" \
         "        exclude:\n          - ruby: \"3.1\"\n            os: ubuntu-latest\n"
-      everywhere = with_os.sub("    include", "    include") + "          - ruby: \"3.1\"\n            os: macos-latest\n"
+      everywhere = with_os + "          - ruby: \"3.1\"\n            os: macos-latest\n"
 
       expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: bare)).status).to eq(:missing_evidence)
       expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: with_os))).to be_verified
@@ -133,13 +136,40 @@ RSpec.describe "escalation delivery" do
       expect(discovered.all(:ci_ruby_matrix) + discovered.all(:ci_ruby_pinned)).to be_empty
     end
 
-    it "credits a lone job's setup-ruby version when no workflow has a matrix" do
-      lone = "jobs:\n  test:\n    steps:\n      - uses: ruby/setup-ruby@v1\n        with:\n          ruby-version: '3.3'\n"
-      expect(support_result(gem_with(requirement: "'>= 3.3'", workflow: lone))).to be_verified
-      expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: lone)).status).to eq(:missing_evidence)
+    it "never lets a single job's pinned Ruby stand in for a test matrix" do
+      lone = "jobs:\n  lint:\n    steps:\n      - uses: ruby/setup-ruby@v1\n        with:\n          ruby-version: '2.7'\n"
+      beside_expression = lone + "  test:\n    strategy:\n      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}\n"
+
+      expect(support_result(gem_with(requirement: "'>= 2.7'", workflow: lone)).status).to eq(:missing_evidence)
+      expect(support_result(gem_with(requirement: "'>= 2.7'", workflow: beside_expression)).status).to eq(:missing_evidence)
     end
 
-    it "takes nothing from a workflow that does not parse" do
+    it "credits nothing from a matrix whose exclusions are only known at run time" do
+      whole = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"2.7\", \"3.4\"]\n        exclude: ${{ fromJSON(vars.EXCLUDES) }}\n"
+      entry = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"2.7\", \"3.4\"]\n        exclude:\n          - ruby: ${{ vars.OLD }}\n"
+
+      [whole, entry].each do |workflow|
+        expect(support_result(gem_with(requirement: "'>= 2.7'", workflow: workflow)).status).to eq(:missing_evidence)
+      end
+    end
+
+    it "reads workflows with dates and symbols, as the contract file does" do
+      workflow = "env:\n  SINCE: 2024-01-01\n  MODE: :fast\njobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.1\", \"3.4\"]\n"
+      expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow))).to be_verified
+    end
+
+    it "calls a workflow it cannot read its own gap, not untested support" do
+      aliased = "m: &m\n  ruby: [\"3.1\"]\njobs:\n  t:\n    strategy:\n      matrix:\n        <<: *m\n"
+      invalid = "jobs: [unclosed\n"
+
+      [aliased, invalid].each do |workflow|
+        result = support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow))
+        expect(result.status).to eq(:unavailable)
+        expect(result.detail).to start_with("Could not check which Rubies CI exercises: .github/workflows/ci.yml could not be read")
+      end
+    end
+
+    it "takes no matrix from a workflow that does not parse" do
       broken = "jobs:\n  t:\n    strategy: [unclosed\n      matrix:\n        ruby: [\"3.1\"]\n"
       expect(Reanimator.discover(make_repo(files: gem_with(requirement: "'>= 3.1'", workflow: broken))).all(:ci_ruby_matrix)).to be_empty
     end
@@ -391,7 +421,7 @@ RSpec.describe "escalation delivery" do
     it "keeps a crafted workflow file name from becoming its own log line" do
       root = make_repo(files: gem_with(requirement: "'>= 3.3'"))
       FileUtils.mkdir_p(File.join(root, ".github/workflows", "x\n::error title=forged::forged\n.yml"))
-      out, err, = Open3.capture3(RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__),
+      out, err, = Open3.capture3(QUIET_CI, RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__),
         File.expand_path("../../exe/reanimator", __dir__), "baseline", root, "--format", "json")
 
       expect((out + err).lines.grep(/\A::error/)).to be_empty
@@ -407,7 +437,7 @@ RSpec.describe "escalation delivery" do
 
     it "keeps every log entry on one line with the default logger" do
       script = 'Reanimator.logger.warn("first\n::error::forged\r\nlast")'
-      _out, err, = Open3.capture3(RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__), "-rreanimator", "-e", script)
+      _out, err, = Open3.capture3(QUIET_CI, RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__), "-rreanimator", "-e", script)
 
       expect(err.lines.size).to eq(1)
       expect(err).to include("first ::error::forged last")
@@ -432,7 +462,9 @@ RSpec.describe "escalation delivery" do
       status, output = run_cli("repair", root)
 
       expect(status).to eq(0)
-      expect(output).to include("NO-OP", "Nothing to repair. Still unproven, because Reanimator cannot establish the proof yet: boot.")
+      expect(output).to include("Outcome:  NO-OP (nothing to repair)",
+        "Nothing to repair. Still unproven, because Reanimator cannot establish the proof yet: boot.")
+      expect(output).not_to include("healthy")
       expect(output).not_to include("All required criteria pass")
     end
 
@@ -461,7 +493,7 @@ RSpec.describe "escalation delivery" do
     it "keeps --format json parseable when a detector warns, with the default logger" do
       root = make_repo(files: gem_with(requirement: "'>= 3.3'").merge("package.json" => "[1]"))
       exe = File.expand_path("../../exe/reanimator", __dir__)
-      output, warnings, = Open3.capture3(RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__), exe,
+      output, warnings, = Open3.capture3(QUIET_CI, RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__), exe,
         "baseline", root, "--format", "json")
 
       expect(warnings).to include("Commands")

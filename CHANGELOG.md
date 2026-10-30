@@ -39,12 +39,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   every workflow, and a matrix that rose above the floor, or pins no specific
   release, is missing evidence. Workflows are parsed as YAML: every job's
   `strategy.matrix` Ruby list counts, less what `exclude:` removes, plus
-  `include:` entries, kept as written. A single job's setup-ruby version counts
-  only when no workflow has a matrix, so a lint job pinned to an old Ruby
-  cannot stand in for the tests. Workflows using YAML aliases give no evidence
-  (an alias bomb is repository input). Gemspec requirements written as arrays —
-  on one line or several — or `Gem::Requirement.new(...)` are read; `>= 0` sets
-  no floor.
+  `include:` entries, kept as written; a matrix or exclusion written as an
+  expression credits nothing, since it is only known at run time. A single
+  job's pinned `ruby-version`, a version file and a reusable workflow are not
+  read — as before — so a lint job cannot stand in for the tests. A workflow
+  Reanimator cannot read (YAML aliases, which it refuses to expand, or invalid
+  YAML) makes the check `unavailable` and names the file, rather than claiming
+  the support is untested. Gemspec requirements written as arrays — on one
+  line or several — or `Gem::Requirement.new(...)` are read; `>= 0` sets no
+  floor.
 - **An unquoted whole-number Ruby in a matrix reads as a bare major.** YAML
   turns `3.0` into a number that Actions renders as `3`, which setup-ruby reads
   as the latest 3.x, so Reanimator now reads it the same way (and `3.10` as

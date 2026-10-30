@@ -207,7 +207,7 @@ artifact* — never a write, never a submission.
 
 ```console
 $ reanimator repair            # on a healthy repo
-Outcome:  NO-OP (healthy)
+Outcome:  NO-OP (nothing to repair)
 
 $ reanimator repair            # repair not yet enabled in the contract
 Outcome:  ESCALATION

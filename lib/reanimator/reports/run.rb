@@ -8,7 +8,7 @@ module Reanimator
     # no source was written.
     class Run
       OUTCOME_LABEL = {
-        no_op: "NO-OP (healthy)",
+        no_op: "NO-OP (nothing to repair)",
         report: "REPORT",
         draft_pr: "DRAFT PR (proposed, not submitted)",
         escalation: "ESCALATION",

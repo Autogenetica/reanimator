@@ -16,25 +16,32 @@ module Reanimator
       NO_FLOOR = Gem::Version.new("1")
 
       def call
-        ci = exercised(:ci_ruby_matrix)
-        # A single job's pinned Ruby counts only when no workflow has a matrix:
-        # a lint job pinned to an old Ruby must not stand in for the tests.
-        ci = exercised(:ci_ruby_pinned) if ci.empty?
+        ci = discovery.all(:ci_ruby_matrix).flat_map { |fact| Array(fact.value) }.uniq
         declared = discovery[:supported_ruby]
 
-        if ci.any?
-          grade_coverage(ci, declared && Array(declared.value))
-        elsif declared
-          result(:missing_evidence,
-            detail: "Ruby #{Array(declared.value).join(", ")} is declared but not exercised in CI.")
-        else
-          result(:skipped, detail: "No declared runtime support matrix to verify.")
-        end
+        graded =
+          if ci.any?
+            grade_coverage(ci, declared && Array(declared.value))
+          elsif declared
+            result(:missing_evidence,
+              detail: "Ruby #{Array(declared.value).join(", ")} is declared but not exercised in CI.")
+          else
+            result(:skipped, detail: "No declared runtime support matrix to verify.")
+          end
+        unread_workflows(graded)
       end
 
       private
 
-      def exercised(key) = discovery.all(key).flat_map { |fact| Array(fact.value) }.uniq
+      # A workflow Reanimator could not read may hold the very matrix that is
+      # missing, so a missing-evidence verdict is Reanimator's gap, not the
+      # repository's: it becomes unavailable, naming the workflow and why.
+      def unread_workflows(graded)
+        unread = discovery.all(:ci_workflow_unreadable)
+        return graded if unread.empty? || graded.status != :missing_evidence
+
+        result(:unavailable, detail: "Could not check which Rubies CI exercises: #{unread.map(&:claim).join(" ")}")
+      end
 
       def grade_coverage(ci_versions, declared)
         floor = declared && declared_floor(declared)

@@ -62,13 +62,17 @@ tested only 3.3 and 3.4 read as verified.
   list counts less what `exclude:` removes (combination by combination, or by
   value past 1,000 combinations), plus `include:` entries; only strings and
   numbers are Rubies, kept as written; a whole YAML float (`3.0`) is a bare
-  major as Actions renders it, and a bare major proves no minor. A single
-  job's setup-ruby version counts only when no workflow has a matrix, so a
-  lint job cannot stand in for the tests. YAML aliases are refused - a
+  major as Actions renders it, and a bare major proves no minor. Anything only
+  known at run time - a matrix or exclusion written as an expression - credits
+  nothing. A single job's pinned Ruby is not read: crediting it let a lint job
+  stand in for the tests, so single-job CI, version files and reusable
+  workflows under-credit, as they did before. YAML aliases are refused - a
   workflow is repository input, and an alias bomb would be expanded while
-  reading it. Drift snapshots record the same matrix union the evaluator reads.
-  Regex parsing was tried first; three reviews each found new false results,
-  and a fourth found the YAML reader's gaps (exclusions, lone jobs, aliases).
+  reading it - and a workflow that cannot be read makes the check
+  `unavailable`, naming the file, instead of claiming untested support. Drift
+  snapshots record the same matrix union the evaluator reads. Regex parsing
+  was tried first; three reviews each found new false results, and two more
+  found gaps in the YAML reader, each closed in the fail-closed direction.
 
 ## Alternatives considered
 
