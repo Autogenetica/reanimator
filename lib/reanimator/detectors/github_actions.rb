@@ -61,16 +61,21 @@ module Reanimator
         end
       end
 
-      # Commented-out lines are not run - commenting a version out is how one
-      # is usually dropped - and an entry must look like a Ruby, so a list of
-      # steps after an empty key is not read as versions.
+      # An entry must look like a Ruby, so a list of steps after an empty key
+      # is not read as versions.
       def matrix_versions(body)
-        live = body.lines(chomp: true).reject { |line| line.lstrip.start_with?("#") }
-          .map { |line| line.sub(/\s+#.*$/, "") }.join("\n")
+        live = uncommented(body)
         inline = live.scan(RUBY_MATRIX).flat_map { |(list)| list.split(",") }
         block = live.scan(RUBY_MATRIX_BLOCK).flat_map { |(list)| list.lines.map { |line| line.sub(/\A\s*-\s*/, "") } }
         scalar = live.scan(RUBY_SCALAR).flatten
         (inline + block + scalar).map { |v| v.strip.delete("\"'") }.select { |v| RUBY_ENTRY.match?(v) }.uniq
+      end
+
+      # The workflow without comments: commented-out lines are not run, and
+      # commenting a version out is how one is usually dropped.
+      def uncommented(body)
+        body.lines(chomp: true).reject { |line| line.lstrip.start_with?("#") }
+          .map { |line| line.sub(/\s+#.*$/, "") }.join("\n")
       end
 
       def security_facts(workflows)
