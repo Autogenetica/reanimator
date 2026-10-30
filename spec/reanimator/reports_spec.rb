@@ -16,9 +16,10 @@ RSpec.describe "reports" do
       expect(out).to include("No source changes were made")
     end
 
-    it "flags attention when required checks are unproven" do
+    it "says planned checks are not yet proven without claiming anyone is needed" do
       out = described_class.new(baseline({"Gemfile" => "gemspec\n", "widget.gemspec" => "x"})).render
-      expect(out).to include("Attention needed")
+      expect(out).to include("Not proven yet")
+      expect(out).not_to include("Attention needed")
     end
   end
 

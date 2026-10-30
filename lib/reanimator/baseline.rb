@@ -12,14 +12,21 @@ module Reanimator
 
     # @param egress [EgressControl::Decision, nil] how execution was held to the
     #   posture's network rule; nil when execution was never requested
-    def initialize(contract:, results:, state:, generated_at:, executed:, egress: nil)
+    # @param execution_requested [Boolean] whether the run asked to execute,
+    #   whether or not it was allowed to
+    def initialize(contract:, results:, state:, generated_at:, executed:, egress: nil, execution_requested: executed)
       @contract = contract
       @results = results
       @state = state
       @generated_at = generated_at
       @executed = executed
       @egress = egress
+      @execution_requested = execution_requested
     end
+
+    # Whether the run asked to execute and nothing ran - configuration
+    # disallowed it, or the posture's network rule could not be enforced.
+    def execution_withheld? = @execution_requested && !executed?
 
     # @return [Boolean] whether checks actually executed, versus were planned
     def executed? = @executed
@@ -51,6 +58,34 @@ module Reanimator
     # that genuinely still need attention (failed, missing, planned, skipped).
     def unresolved_required
       results.select { |r| r.required? && !r.verified? && !r.accepted_risk? }
+    end
+
+    # Required criteria that need a human (section 16): failed, or unproven for
+    # a reason other than the run choosing not to execute. A `planned` command
+    # only means "not asked to run" - unless the run did ask and execution was
+    # withheld, which is a decision someone has to revisit. Missing evidence, a
+    # refused or unavailable check, or an evaluator that errored is something
+    # nobody has resolved.
+    def escalations
+      return unresolved_required if execution_withheld?
+
+      unresolved_required.reject { |r| r.status == :planned }
+    end
+
+    def needs_attention? = escalations.any?
+
+    # Advisory criteria that found a real problem - failed, missing evidence,
+    # or errored. They never block, so they never fail a run, but they are
+    # worth a human's eye; "nothing to check" (skipped) and "not asked to run"
+    # (planned) are not problems.
+    def advisories
+      results.reject(&:required?).select { |r| %i[failed missing_evidence error].include?(r.status) }
+    end
+
+    # Escalations block; advisories are noted.
+    # @return [Array<Finding>]
+    def findings
+      escalations.map { |r| finding(:error, r) } + advisories.map { |r| finding(:notice, r) }
     end
 
     # Required criteria whose failure has been explicitly waived - accepted
@@ -96,6 +131,12 @@ module Reanimator
     # A repository is proven when it is Alive with no failed or unproven
     # required criteria.
     def proven? = state.alive?
+
+    def finding(level, result)
+      Finding.new(level, "#{repository.full_name} #{result.criterion.id}",
+        [result.criterion.claim, result.detail].compact.join(" — "))
+    end
+    private :finding
 
     def to_h
       {

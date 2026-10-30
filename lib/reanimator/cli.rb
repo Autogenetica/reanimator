@@ -9,7 +9,17 @@ module Reanimator
   # discover, contract (review), and baseline (measure). Nothing in this CLI
   # writes to a repository or connects an agent - it exists to make the
   # repository's definition of life visible, executable, and trustworthy.
+  #
+  # Exit status separates the tool from the repository: 1 means Reanimator
+  # itself could not do its job (or drift needs review); 2 means it did its job
+  # and a human is needed (section 16 escalation). Inside GitHub Actions the
+  # same escalations are also published as annotations and a job summary.
   class CLI < Thor
+    EXIT_ERROR = 1
+    EXIT_ATTENTION = 2
+    # The report each kind of subject contributes to the CI job summary.
+    SUMMARY_REPORTS = {Baseline => Reports::GitHubCheck, Run => Reports::Run}.freeze
+
     def self.exit_on_failure? = true
 
     desc "version", "Print the Reanimator version"
@@ -56,6 +66,10 @@ module Reanimator
       proof-of-life state. Native checks (integrity, documentation, support
       matrix) always run; command and boot checks only plan unless --execute is
       given, and even then execution is bounded and never edits source.
+
+      Exits 2 when a required criterion needs a human - failed, or unproven for
+      any reason other than not being asked to execute. Inside GitHub Actions
+      each such criterion is annotated and the check is added to the job summary.
     DESC
     option :execute, type: :boolean, default: false, desc: "Actually run discovered checks (bounded, read-only)"
     option :intent, desc: "Override the inferred lifecycle intent"
@@ -63,7 +77,9 @@ module Reanimator
     def baseline(path = Dir.pwd)
       guard do
         baseline = Reanimator.baseline(path, execute: options[:execute], intent: options[:intent]&.to_sym)
-        puts render_baseline(baseline, options[:format])
+        json = options[:format] == "json"
+        emit(render_baseline(baseline, options[:format]), machine: json)
+        exit_for([baseline], annotate: !json)
       end
     end
 
@@ -73,13 +89,16 @@ module Reanimator
     def portfolio(*paths)
       guard do
         paths = [Dir.pwd] if paths.empty?
+        unreadable = []
         baselines = paths.filter_map do |path|
           Reanimator.baseline(path, execute: options[:execute])
         rescue RepositoryError => e
           warn "skipping #{path}: #{e.message}"
+          unreadable << path
           nil
         end
-        puts Reports::PortfolioBaseline.new(baselines, name: options[:name]).render
+        emit(Reports::PortfolioBaseline.new(baselines, name: options[:name]).render)
+        exit_for(baselines, bad_input: unreadable.any?)
       end
     end
 
@@ -100,7 +119,7 @@ module Reanimator
       guard do
         report = Reanimator.commission(provider: options[:provider].to_sym)
         puts Reports::Commissioning.new(report).render
-        exit 1 unless report.ready? || report.readiness == :unavailable
+        exit EXIT_ERROR unless report.ready? || report.readiness == :unavailable
       end
     end
 
@@ -118,7 +137,8 @@ module Reanimator
     def repair(path = Dir.pwd)
       guard do
         run = Reanimator.repair(path, provider: options[:provider].to_sym, task_class: options[:task_class].to_sym)
-        puts Reports::Run.new(run).render
+        emit(Reports::Run.new(run).render)
+        exit_for([run])
       end
     end
 
@@ -199,6 +219,30 @@ module Reanimator
 
     private
 
+    # Prints command output. Machine output (JSON) goes out untouched: JSON
+    # escapes newlines, so repository text cannot start a workflow command in
+    # it, and wrapping it would break it. Reports go through the Actions guard.
+    def emit(text, machine: false)
+      machine ? puts(text) : ActionsSurface.print_report(text)
+    end
+
+    # Publishes the subjects' findings to CI, then exits: EXIT_ERROR when some
+    # input could not be read at all ("we could not tell" is never a pass),
+    # EXIT_ATTENTION when a finding blocks, normally otherwise.
+    #
+    # @param subjects [Array<Baseline, Run>]
+    # @param annotate [Boolean] false when stdout carries machine output
+    # @param bad_input [Boolean] whether some requested input was unreadable
+    def exit_for(subjects, annotate: true, bad_input: false)
+      findings = subjects.flat_map(&:findings)
+      ActionsSurface.publish(
+        annotations: annotate ? Reports::Annotations.new(findings).render : [],
+        summaries: subjects.map { |s| ["Reanimator — #{s.repository.full_name}", SUMMARY_REPORTS.fetch(s.class).new(s).render] }
+      )
+      exit EXIT_ERROR if bad_input
+      exit EXIT_ATTENTION if findings.any?(&:blocking?)
+    end
+
     # Several paths: a triage list across the portfolio, not one verdict.
     def portfolio_drift(paths)
       %w[since save].each do |single|
@@ -212,7 +256,7 @@ module Reanimator
         paths, snapshots: options[:snapshots], record: options[:record], intent: options[:intent]&.to_sym
       )
       puts((options[:format] == "json") ? JSON.pretty_generate(drift.to_h) : Reports::PortfolioDrift.new(drift).render)
-      exit 1 if drift.requires_review?
+      exit EXIT_ERROR if drift.requires_review?
     end
 
     def single_drift(path)
@@ -224,7 +268,7 @@ module Reanimator
 
       recorded_to = record_snapshot(snapshot, repository, store)
       puts render_drift(report, snapshot, recorded_to, store)
-      exit 1 if report&.requires_review?
+      exit EXIT_ERROR if report&.requires_review?
     end
 
     # A snapshot is written only where the maintainer asked for it: --save names
@@ -267,7 +311,7 @@ module Reanimator
       yield
     rescue Reanimator::Error => e
       warn "reanimator: #{e.message}"
-      exit 1
+      exit EXIT_ERROR
     end
   end
 end

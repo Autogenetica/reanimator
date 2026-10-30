@@ -67,12 +67,12 @@ patch:
 | 12 | Security controls | done — denied egress enforced on Linux, refused elsewhere (Slice 1) |
 | 13/17 | Bounded repair & run ledger | done (no writes) |
 | 14–15 | Baseline & proof-of-life | done |
-| 16 | Escalation | outcome exists; **no delivery surface** |
+| 16 | Escalation | done — exit status 2 + Actions annotations/summary (Slice 3) |
 | 18 | MVP slices 1–4 | done |
 | 19 | Portability | satisfied by ADR-004 (agents as replaceable adapters) |
 | 20 | v1 defaults | done (autonomy defaults, posture defaults, Ruby/Rails first) |
 
-Slice 1 is done; four things remain. They are ordered by how much the rest
+Slices 1 and 3 are done; Slice 2 (submit) is paused and the rest remain. They are ordered by how much the rest
 depends on them.
 
 ---
@@ -183,7 +183,20 @@ the submitter needs a dry-run seam the specs use.
 
 ---
 
-## Slice 3 — Give escalation somewhere to go (§16)
+## Slice 3 — Give escalation somewhere to go (§16) — done
+
+**Outcome (2026-10-29).** Decisions: exit status plus check output, no platform
+work; a draft waiting to be submitted counts as needing a human; advisory
+problems are `::notice`. `baseline`, `portfolio`, `repair` and `submit` exit `2`
+when a human is needed (`Finding`s from `Baseline` and `Run`), keeping `1` for
+the tool failing. Inside GitHub Actions, `ActionsSurface` prints one annotation
+per finding and appends the check to the job summary, with reports fenced off
+by `::stop-commands::` so repository text cannot forge or silence annotations. **Correction to the brief below:** `SupportMatrix` did
+*not* detect narrowed support — it credited any CI matrix. It now compares the
+declared floor with CI's lowest Ruby. See ADR-009.
+
+The original brief follows.
+
 
 **The gap.** `Run::OUTCOMES` has `:escalation`, `Reports::Run` renders it, and
 `RepositoryState` has `needs_you`. Nothing tells a human. The specification's
@@ -266,7 +279,7 @@ have to display.
 ## Verifying you have not broken anything
 
 ```bash
-bundle exec rake                                  # 232 examples (1 pending off Linux), StandardRB
+bundle exec rake                                  # 257 examples (1 pending off Linux), StandardRB
 bundle exec exe/reanimator baseline . --execute    # ALIVE — 100% (3/3)
 bundle exec exe/reanimator contract .              # posture, criteria, protected paths
 bundle exec exe/reanimator drift .                 # obligations, or drift if recorded

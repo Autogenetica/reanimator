@@ -5,14 +5,22 @@ module Reanimator
     # A native evaluator that compares declared runtime support against what CI
     # actually exercises. This is the classic escalation from section 16: "the
     # project declares Ruby 3.2 support, but CI no longer tests it." Declared
-    # support with no CI coverage is missing evidence, not a pass.
+    # support with no CI coverage is missing evidence, not a pass - and so is a
+    # CI matrix whose lowest released Ruby has moved above the declared floor,
+    # or one that exercises no released Ruby at all, because support then
+    # narrowed while the declaration still promises more.
     class SupportMatrix < Base
+      # Requirement operators that state a lower bound on supported versions.
+      FLOOR_OPERATORS = %w[>= > ~> =].freeze
+      # ">= 0" and friends promise nothing, so they set no floor.
+      NO_FLOOR = Gem::Version.new("1")
+
       def call
-        ci = discovery[:ci_ruby_matrix]
+        ci = discovery.all(:ci_ruby_matrix).flat_map { |fact| Array(fact.value) }.uniq
         declared = discovery[:supported_ruby]
 
-        if ci
-          result(:verified, detail: "CI exercises Ruby #{Array(ci.value).join(", ")}.")
+        if ci.any?
+          grade_coverage(ci, declared && Array(declared.value))
         elsif declared
           result(:missing_evidence,
             detail: "Ruby #{Array(declared.value).join(", ")} is declared but not exercised in CI.")
@@ -20,6 +28,45 @@ module Reanimator
           result(:skipped, detail: "No declared runtime support matrix to verify.")
         end
       end
+
+      private
+
+      def grade_coverage(ci_versions, declared)
+        floor = declared && declared_floor(declared)
+        lowest = lowest_release(ci_versions)
+        if floor && lowest.nil?
+          return result(:missing_evidence,
+            detail: "Ruby #{floor} is declared supported, but CI exercises no released Ruby (#{ci_versions.join(", ")}).")
+        end
+        if floor && minor(lowest) > minor(floor)
+          return result(:missing_evidence,
+            detail: "Ruby #{floor} is declared supported, but CI's lowest Ruby is #{lowest}; " \
+                    "support narrowed without the declaration changing.")
+        end
+
+        result(:verified, detail: "CI exercises Ruby #{ci_versions.join(", ")}.")
+      end
+
+      # The lowest version any declared requirement admits, or nil when none
+      # states a meaningful lower bound.
+      def declared_floor(requirements)
+        floors = requirements.flat_map do |requirement|
+          Gem::Requirement.new(requirement).requirements
+            .filter_map { |operator, version| version if FLOOR_OPERATORS.include?(operator) }
+        rescue Gem::Requirement::BadRequirementError
+          []
+        end
+        floors.select { |version| version >= NO_FLOOR }.min
+      end
+
+      # The lowest released version in the CI matrix, ignoring entries such as
+      # "head" or "truffleruby" that are not plain versions.
+      def lowest_release(versions)
+        versions.select { |v| Gem::Version.correct?(v) }.map { |v| Gem::Version.new(v) }.min
+      end
+
+      # Support is claimed per minor release, so compare major.minor only.
+      def minor(version) = Gem::Version.new(version.segments.first(2).join("."))
     end
   end
 end

@@ -8,6 +8,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Escalation delivery** (section 16). `baseline`, `portfolio` and `repair` now
+  exit `2` when a human is needed — a required criterion failed or is unproven
+  (including checks asked to execute that could not), or a repair produced
+  anything but a healthy no-op — keeping
+  `1` for Reanimator itself failing, including an unreadable portfolio path.
+  Inside GitHub Actions each blocking finding becomes an `::error` annotation,
+  each advisory problem a `::notice`, and the check surface is appended to the
+  job summary. Reports are printed between `::stop-commands::` markers so
+  repository text cannot forge or silence an annotation, and `--format json`
+  stays valid JSON.
+
 - **Network egress enforcement** (section 12). A security posture's network rule
   was a label; it is now enforced or refused. Under `strict` and `local`, which
   deny egress, every executed check runs inside an empty network namespace
@@ -20,6 +31,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   downstream member's posture, and a bounded repair whose baseline did not
   execute stops safely instead of reading the empty result as a clean bill of
   health.
+
+### Changed
+
+- **`SupportMatrix` catches narrowed support.** It credited any CI Ruby matrix;
+  it now compares the declared floor with CI's lowest released Ruby across every
+  workflow, and a matrix that rose above the floor, or exercises no released
+  Ruby, is missing evidence. Discovery now reads every matrix in a workflow
+  (including YAML block lists) and gemspec requirements written as arrays or
+  `Gem::Requirement.new(...)`; `>= 0` sets no floor.
+- **A repair with nothing to fix but something unproven escalates** instead of
+  reporting a healthy no-op.
 
 ## [0.1.0] - 2026-10-28
 

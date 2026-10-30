@@ -140,6 +140,41 @@ Mode:    not executed — the strict posture requires denied network egress and 
 
 Other formats: `--format check` (the GitHub Check surface) and `--format json`.
 
+#### In CI — exit status and annotations
+
+The exit status separates the tool from the repository, so CI goes red only
+when a human is actually needed:
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | Nothing needs a human. |
+| 1 | Reanimator could not do its job (bad input, an unreadable path or contract), or `drift` needs review. |
+| 2 | A human is needed: a required criterion failed or is unproven (including checks that were asked to execute and could not), or a `repair` produced anything but a healthy no-op — a verified draft waiting for a human counts. |
+
+Inside GitHub Actions the same findings also surface without anyone opening the
+log: each blocking finding becomes an `::error` annotation, each advisory
+criterion with a real problem a `::notice`, and the check surface is appended to
+the job summary. One annotation per finding, per run. Reports quote text the
+repository controls, so they are printed between `::stop-commands::` markers and
+cannot forge or silence an annotation; `--format json` stays pure JSON.
+
+```yaml
+- run: bundle exec reanimator baseline --execute --format check
+```
+
+Advisory criteria never fail the job. To make one blocking — say, declared Ruby
+support that CI no longer exercises — declare it required:
+
+```yaml
+# .reanimator.yml
+acceptance:
+  checks:
+    - id: support_matrix
+      claim: "Declared Ruby versions are exercised."
+      evaluator: support_matrix
+      required: true
+```
+
 ### 5. Prove an agent is ready — `agents` and `commission`
 
 The agent is a replaceable life-force adapter: a repair provider is *commissioned*
@@ -474,6 +509,7 @@ Two rules are **enforced**, not just documented:
 | 18 MVP slices 1–4 | ✅ Inventory→baseline→commissioning→bounded repair |
 | 10 Repository families & compatibility graphs | ✅ `Relationship`, `Family`, `FamilyInference`, `Family::GateRunner` |
 | 12 Security controls | ✅ `SecurityControl`, `SecurityPosture#obligations`, `Evaluators::SecurityEvidence`, `EgressControl` (denied egress enforced on Linux, refused elsewhere; the balanced registry allowlist is advisory) |
+| 16 Escalation delivery | ✅ Exit status 2, `Reports::Annotations`, `ActionsSurface` (annotations + job summary); `SupportMatrix` catches narrowed support |
 | Draft-PR *submission* to GitHub | ⏳ Deliberate opt-in; artifact is ready, the write is not wired |
 | GitHub App, web UI | ⏳ Explicitly later (spec sections 03, 18) |
 

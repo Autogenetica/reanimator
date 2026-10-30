@@ -27,9 +27,13 @@ module Reanimator
 
       private
 
+      # Agrees with the exit status: "attention needed" only when a required
+      # check needs a human, not when checks were merely planned.
       def checks_summary
-        if unproven_or_failed.positive?
-          "Attention needed: #{unproven_or_failed} required check(s) are not yet proven."
+        if @baseline.needs_attention?
+          "Attention needed: #{@baseline.escalations.size} required check(s) need a human."
+        elsif unproven_or_failed.positive?
+          "Not proven yet: #{unproven_or_failed} required check(s) were planned, not run; run with --execute to prove them."
         elsif @baseline.executed?
           "No maintenance change was required."
         else

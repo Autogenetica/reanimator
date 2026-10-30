@@ -28,7 +28,13 @@ module Reanimator
       return record(:safe_stop, pre: pre, reason: unexecuted_reason(pre)) unless pre.executed?
 
       target = pre.first_failing_required_criterion
-      return record(:no_op, pre: pre, reason: "All required criteria pass; no repair is needed.") unless target
+      unless target
+        # Nothing failed, but "nothing to repair" is not "healthy" while a
+        # required criterion is still unproven - that needs a human, not a no-op.
+        return record(:escalation, pre: pre, reason: unproven_reason(pre)) if pre.needs_attention?
+
+        return record(:no_op, pre: pre, reason: "All required criteria pass; no repair is needed.")
+      end
 
       resolution = PermissionModel.new(@contract).resolve(@task_class)
       unless resolution.permits?(:repair)
@@ -91,6 +97,11 @@ module Reanimator
         patch.apply(eval_dir)
         BaselineRunner.new(EffectivePolicyResolver.new(Repository.at(eval_dir)).resolve, execute: true).run
       end
+    end
+
+    def unproven_reason(pre)
+      ids = pre.escalations.map { |r| r.criterion.id }.join(", ")
+      "Nothing failed to repair, but required criteria are unproven: #{ids}. A repair cannot prove them; a human must."
     end
 
     def unexecuted_reason(pre)

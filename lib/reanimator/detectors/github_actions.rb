@@ -19,7 +19,10 @@ module Reanimator
         "bundle audit" => "Bundler dependency audit"
       }.freeze
 
+      # Inline matrices (ruby: ["3.3", "3.4"]) and YAML block lists
+      # (ruby:\n  - "3.3"\n  - "3.4").
       RUBY_MATRIX = /ruby(?:-version)?\s*:\s*\[([^\]]+)\]/
+      RUBY_MATRIX_BLOCK = /ruby(?:-version)?\s*:[ \t]*\n((?:[ \t]*-[ \t]*[^\n]+\n?)+)/
 
       def detect
         workflows = repository.glob(".github/workflows/*.yml") + repository.glob(".github/workflows/*.yaml")
@@ -38,18 +41,26 @@ module Reanimator
 
       private
 
+      # One fact per workflow, holding every Ruby any of its jobs exercises - a
+      # lint job pinned to one Ruby must not hide the test matrix beside it.
       def ruby_matrix_facts(workflows)
         workflows.filter_map do |path|
           body = repository.read(path)
-          next unless body && (m = body.match(RUBY_MATRIX))
+          next unless body
 
-          versions = m[1].split(",").map { |v| v.strip.delete("\"'") }.reject(&:empty?)
+          versions = matrix_versions(body)
           next if versions.empty?
 
           fact(:ci_ruby_matrix, category: :support_matrix,
             claim: "CI exercises Ruby: #{versions.join(", ")}.",
             value: versions, confidence: :high, source: path, method: :yaml_matrix, detail: versions.join(", "))
         end
+      end
+
+      def matrix_versions(body)
+        inline = body.scan(RUBY_MATRIX).flat_map { |(list)| list.split(",") }
+        block = body.scan(RUBY_MATRIX_BLOCK).flat_map { |(list)| list.lines.map { |line| line.sub(/\A\s*-\s*/, "") } }
+        (inline + block).map { |v| v.strip.delete("\"'") }.reject(&:empty?).uniq
       end
 
       def security_facts(workflows)

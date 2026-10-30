@@ -56,7 +56,8 @@ module Reanimator
         state: ProofOfLife.assess(contract, results),
         generated_at: now,
         executed: executing?,
-        egress: egress
+        egress: egress,
+        execution_requested: execute
       )
     end
 

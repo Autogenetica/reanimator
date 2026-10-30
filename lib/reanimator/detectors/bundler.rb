@@ -46,6 +46,15 @@ module Reanimator
         repository.exist?("Gemfile") ? "Gemfile" : first_path("*.gemspec")
       end
 
+      # Every quoted requirement on the required_ruby_version line, so
+      # [">= 3.1", "< 4"] and Gem::Requirement.new(">= 3.1") are read as the
+      # requirements they are; an unquoted value is taken as written.
+      def gemspec_requirements(body, match)
+        line = body.lines.find { |l| l.include?("required_ruby_version") }.to_s
+        quoted = line[/required_ruby_version.*/].to_s.scan(/["']([^"']+)["']/).flatten
+        quoted.empty? ? [match[1].strip] : quoted.map(&:strip)
+      end
+
       # @return [Array<Pin>] de-duplicated runtime pins, strongest source first
       def runtime_pins
         pins = []
@@ -55,7 +64,7 @@ module Reanimator
         end
         if (gemspec = first_path("*.gemspec")) && (body = repository.read(gemspec)) &&
             (m = body.match(RUBY_VERSION_PIN))
-          pins << Pin.new(m[1].strip, gemspec)
+          gemspec_requirements(body, m).each { |requirement| pins << Pin.new(requirement, gemspec) }
         end
         if (gemfile = repository.read("Gemfile")) && (m = gemfile.match(GEMFILE_RUBY))
           pins << Pin.new(m[1].strip, "Gemfile")

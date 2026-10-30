@@ -36,6 +36,22 @@ module Reanimator
     # proposed draft PR is an artifact, not a submission.
     def wrote_to_repository? = false
 
+    # Outcomes a human must act on (section 16): a repair that did not verify,
+    # an escalation, a safe stop, or a verified draft waiting to be submitted.
+    # Only a healthy no-op needs nobody.
+    def needs_attention? = %i[report escalation safe_stop draft_pr].include?(outcome)
+
+    # A draft PR needs a human too: a verified change exists only as this run's
+    # output until someone submits or reviews it.
+    DRAFT_WAITING = "A verified repair was proposed and is waiting for a human to submit or review it."
+
+    # @return [Array<Finding>]
+    def findings
+      return [] unless needs_attention?
+
+      [Finding.new(:error, "#{repository.full_name} #{outcome.to_s.tr("_", " ").upcase}", reason || DRAFT_WAITING)]
+    end
+
     def to_h
       {
         outcome: outcome, repository: repository.full_name, policy_version: policy_version,

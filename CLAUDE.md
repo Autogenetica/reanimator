@@ -36,7 +36,7 @@ changing a single line of code*. Read-only first, and read-only by default.
 
 ```bash
 bin/setup                                       # bundle install
-bundle exec rake                                # specs + StandardRB (expect 232 examples; 1 pending off Linux)
+bundle exec rake                                # specs + StandardRB (expect 257 examples; 1 pending off Linux)
 bundle exec exe/reanimator baseline . --execute  # prove this repo on itself
 bundle exec exe/reanimator contract .            # resolved contract, incl. security posture
 bundle exec exe/reanimator drift . --record      # write .reanimator-snapshot.json
