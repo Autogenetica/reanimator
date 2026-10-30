@@ -218,10 +218,30 @@ RSpec.describe "escalation delivery" do
       end
     end
 
-    it "does not credit a job switched off with if: false" do
-      workflow = "jobs:\n  test:\n    strategy:\n      matrix:\n        ruby: [\"3.4\"]\n" \
-        "  legacy:\n    if: false\n    strategy:\n      matrix:\n        ruby: [\"3.1\"]\n"
-      expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow)).status).to eq(:missing_evidence)
+    it "does not credit a job switched off with if: false, in any spelling" do
+      ["false", "\"false\"", "${{ false }}"].each do |condition|
+        workflow = "jobs:\n  test:\n    strategy:\n      matrix:\n        ruby: [\"3.4\"]\n" \
+          "  legacy:\n    if: #{condition}\n    strategy:\n      matrix:\n        ruby: [\"3.1\"]\n"
+        expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow)).status).to eq(:missing_evidence), condition
+      end
+    end
+
+    it "matches an exclude value that is a number against a string, and the reverse" do
+      workflow = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.0\", \"3.4\"]\n        os: [ubuntu-latest]\n" \
+        "        exclude:\n          - ruby: 3.0\n            os: ubuntu-latest\n"
+      expect(support_result(gem_with(requirement: "'>= 3.0'", workflow: workflow)).status).to eq(:missing_evidence)
+    end
+
+    it "ignores a lower floor inside a =begin block" do
+      gemspec = "Gem::Specification.new do |s|\n=begin\n  s.required_ruby_version = \">= 2.7\"\n=end\n  s.required_ruby_version = \">= 3.1\"\nend\n"
+      files = gem_with(requirement: "'>= 3.1'", matrix: %w[3.1 3.4]).merge("widget.gemspec" => gemspec)
+      expect(support_result(files)).to be_verified
+    end
+
+    it "ignores a commented-out lower floor" do
+      gemspec = "Gem::Specification.new do |s|\n  # s.required_ruby_version = \">= 2.7\"\n  s.required_ruby_version = \">= 3.1\"\nend\n"
+      files = gem_with(requirement: "'>= 3.1'", matrix: %w[3.1 3.4]).merge("widget.gemspec" => gemspec)
+      expect(support_result(files)).to be_verified
     end
 
     it "does not read the floor from a commented-out line" do
@@ -242,9 +262,28 @@ RSpec.describe "escalation delivery" do
       expect(support_result(narrowed_support.merge("widget.gemspec" => multiline)).status).to eq(:missing_evidence)
     end
 
-    it "keeps an unquoted requirement as written" do
-      files = narrowed_support.merge("widget.gemspec" => "Gem::Specification.new { |s| s.required_ruby_version = RUBY_FLOOR }\n")
-      expect(Reanimator.discover(make_repo(files: files)).value(:supported_ruby)).to eq(["RUBY_FLOOR }"])
+    it "reports a floor it cannot read as missing evidence, never as no floor" do
+      {
+        "constant" => "  s.required_ruby_version = MIN_RUBY\n",
+        "%q()" => "  s.required_ruby_version = %q(>= 3.1)\n",
+        "interpolation" => "  s.required_ruby_version = \">= \#{MIN}\"\n",
+        "lookup" => "  s.required_ruby_version = gemspec['required_ruby_version']\n",
+        "heredoc" => "  s.required_ruby_version = <<~R.strip\n    >= 3.1\n  R\n"
+      }.each do |shape, line|
+        gemspec = "Gem::Specification.new do |s|\n  # floor is 3.4 'soon'\n#{line}end\n"
+        result = support_result(narrowed_support.merge("widget.gemspec" => gemspec))
+        expect(result.status).to eq(:missing_evidence), shape
+        expect(result.detail).to include("Write the floor as a string literal"), shape
+        expect(Reanimator.discover(make_repo(files: narrowed_support.merge("widget.gemspec" => gemspec))).value(:supported_ruby))
+          .to be_nil, shape
+      end
+    end
+
+    it "reads a multi-line array even after another array on the same line" do
+      gemspec = "Gem::Specification.new do |s|\n  s.files = [\"lib/w.rb\"]; s.required_ruby_version = [\n    \">= 3.1\",\n    \"< 4\"\n  ]\nend\n"
+      expect(support_result(narrowed_support.merge("widget.gemspec" => gemspec)).status).to eq(:missing_evidence)
+      expect(Reanimator.discover(make_repo(files: narrowed_support.merge("widget.gemspec" => gemspec))).value(:supported_ruby))
+        .to eq([">= 3.1", "< 4"])
     end
 
     it "records every workflow's matrix in the drift snapshot, as the evaluator reads them" do

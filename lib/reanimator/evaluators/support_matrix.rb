@@ -20,7 +20,9 @@ module Reanimator
         declared = discovery[:supported_ruby]
 
         graded =
-          if ci.any?
+          if (unread = unreadable_floor(declared))
+            result(:missing_evidence, detail: "#{unread} Write the floor as a string literal so declared support can be checked.")
+          elsif ci.any?
             grade_coverage(ci, declared && Array(declared.value))
           elsif declared
             result(:missing_evidence,
@@ -68,10 +70,26 @@ module Reanimator
         floors = requirements.flat_map do |requirement|
           Gem::Requirement.new(requirement).requirements
             .filter_map { |operator, version| version if FLOOR_OPERATORS.include?(operator) }
-        rescue Gem::Requirement::BadRequirementError
-          []
         end
         floors.select { |version| version >= NO_FLOOR }.min
+      end
+
+      # Why the declared floor cannot be judged, or nil. A floor Reanimator
+      # cannot read is not "no floor": reading it as one would credit any
+      # matrix at all.
+      def unreadable_floor(declared)
+        unread = discovery[:supported_ruby_unreadable]
+        return unread.claim if unread
+
+        bad = Array(declared&.value).reject { |requirement| parses?(requirement) }
+        "Declared Ruby support #{bad.join(", ")} could not be parsed as a requirement." if bad.any?
+      end
+
+      def parses?(requirement)
+        Gem::Requirement.new(requirement)
+        true
+      rescue Gem::Requirement::BadRequirementError
+        false
       end
 
       # The lowest released version the CI matrix pins, ignoring entries such as

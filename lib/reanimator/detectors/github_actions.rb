@@ -63,9 +63,9 @@ module Reanimator
         end
       end
 
-      # A job switched off with a literal `if: false` never runs, so its matrix
-      # is not evidence.
-      def disabled?(job) = [false, "false"].include?(job["if"])
+      # A job switched off with a literal `if: false` (or `${{ false }}`) never
+      # runs, so its matrix is not evidence.
+      def disabled?(job) = [false, "false", "${{ false }}"].include?(job["if"].is_a?(String) ? job["if"].strip : job["if"])
 
       # Workflows Reanimator could not read, and why, so a missing matrix is
       # reported as its gap rather than as untested support.
@@ -148,8 +148,8 @@ module Reanimator
 
         others = matrix.except(key, "include", "exclude").transform_values { |values| Array(values) }
         if others.values.reduce(rubies.size) { |count, values| count * values.size } > MAX_COMBINATIONS
-          excluded = excludes.flat_map { |entry| scalars(entry[key]) }.map(&:to_s)
-          return rubies.reject { |ruby| excluded.include?(ruby.to_s) }
+          excluded = excludes.flat_map { |entry| scalars(entry[key]) }
+          return rubies.reject { |ruby| excluded.any? { |value| same_value?(ruby, value) } }
         end
 
         rubies.select do |ruby|
@@ -164,8 +164,7 @@ module Reanimator
       # Compared loosely - case aside, and 7.0 as 7, the way Actions renders
       # numbers - because a looser match can only under-credit.
       def same_value?(value, excluded)
-        normal = ->(item) { ruby_label(item).downcase }
-        normal.call(value) == normal.call(excluded)
+        value.to_s.casecmp?(excluded.to_s) || ruby_label(value).casecmp?(ruby_label(excluded))
       end
 
       # A combination's value for an exclude key. Keys are compared without
