@@ -80,13 +80,17 @@ module Reanimator
     CRITERION_RULES = [
       CriterionRule.new(:required, "required", ->(before, _after) { before ? RELAXED_OBLIGATION : TIGHTENED_OBLIGATION }),
       CriterionRule.new(:evaluator, "evaluator", ->(_before, _after) { MOVED_EVALUATOR }),
-      CriterionRule.new(:run, "command", lambda do |before, after|
-        if after.to_s.empty? then LOST_COMMAND
-        elsif before.to_s.empty? then GAINED_COMMAND
-        else RENAMED_COMMAND
-        end
-      end)
+      CriterionRule.new(:run, "command", ->(before, after) { command_change(before, after) })
     ].freeze
+
+    # A command that vanished leaves an obligation nothing proves; one that
+    # appeared proves more; one that changed spelling proves the same thing.
+    def self.command_change(before, after)
+      return LOST_COMMAND if after.to_s.empty?
+      return GAINED_COMMAND if before.to_s.empty?
+
+      RENAMED_COMMAND
+    end
 
     # How a waiver with no expiry reads in a report.
     OPEN_ENDED = "open-ended"
