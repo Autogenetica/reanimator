@@ -37,10 +37,10 @@ module Reanimator
     # token on the default port, ssh://git@ on port 22, and git@host:path. Any
     # other spelling - another user, another port, an unusual scheme - is
     # compared exactly instead of guessed at.
-    FORGE_REMOTE = %r{\A(?:https://(?:#{USERINFO}(?::#{USERINFO})?@)?(#{FORGE_HOST})(?::443)?/|
-                       ssh://git@(#{FORGE_HOST})(?::22)?/|
-                       git@(#{FORGE_HOST}):)
-                     (#{SEGMENT}(?:/#{SEGMENT})+)/?\z}xi
+    FORGE_REMOTE = %r{\A(?:https://(?:#{USERINFO}(?::#{USERINFO})?@)?(?<host>#{FORGE_HOST})(?::443)?/|
+                       ssh://git@(?<host>#{FORGE_HOST})(?::22)?/|
+                       git@(?<host>#{FORGE_HOST}):)
+                     (?<path>#{SEGMENT}(?:/#{SEGMENT})+)/?\z}xi
     # Prefix for remotes compared exactly; forge identities never contain "=".
     EXACT = "="
 
@@ -63,7 +63,7 @@ module Reanimator
       forge = FORGE_REMOTE.match(text)
       return "#{EXACT}#{text}" unless forge
 
-      "#{forge.captures.first(3).compact.first.downcase}/#{forge[4].delete_suffix(".git").downcase}"
+      "#{forge[:host].downcase}/#{forge[:path].delete_suffix(".git").downcase}"
     end
 
     # @return [Boolean] whether an "upstream" remote is configured, a strong
