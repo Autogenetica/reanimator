@@ -101,9 +101,13 @@ module Reanimator
         matrix = job.dig("strategy", "matrix")
         return [] unless matrix.is_a?(Hash)
 
+        (listed_rubies(matrix) + included_rubies(matrix)).map { |value| ruby_label(value) }
+      end
+
+      # The matrix's own Ruby list, less what its exclusions remove.
+      def listed_rubies(matrix)
         key = RUBY_KEYS.find { |candidate| matrix.key?(candidate) }
-        listed = key ? surviving(matrix, key, scalars(matrix[key])) : []
-        (listed + included_rubies(matrix)).map { |value| ruby_label(value) }
+        key ? surviving(matrix, key, scalars(matrix[key])) : []
       end
 
       # Whether the exclusions can be read as data. One written as an
