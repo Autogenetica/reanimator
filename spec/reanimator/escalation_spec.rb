@@ -125,6 +125,14 @@ RSpec.describe "escalation delivery" do
       expect(Reanimator.discover(make_repo(files: gem_with(requirement: "'>= 3.1'", workflow: bomb))).all(:ci_ruby_matrix)).to be_empty
     end
 
+    it "does not read an expression as a Ruby" do
+      workflow = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: ${{ fromJSON(needs.setup.outputs.rubies) }}\n" \
+        "    steps:\n      - uses: ruby/setup-ruby@v1\n        with:\n          ruby-version: ${{ matrix.ruby }}\n"
+      discovered = Reanimator.discover(make_repo(files: gem_with(requirement: "'>= 3.3'", workflow: workflow)))
+
+      expect(discovered.all(:ci_ruby_matrix) + discovered.all(:ci_ruby_pinned)).to be_empty
+    end
+
     it "credits a lone job's setup-ruby version when no workflow has a matrix" do
       lone = "jobs:\n  test:\n    steps:\n      - uses: ruby/setup-ruby@v1\n        with:\n          ruby-version: '3.3'\n"
       expect(support_result(gem_with(requirement: "'>= 3.3'", workflow: lone))).to be_verified

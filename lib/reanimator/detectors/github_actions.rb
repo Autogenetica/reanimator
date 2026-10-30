@@ -133,8 +133,12 @@ module Reanimator
         end
       end
 
-      # Only strings and numbers are Rubies; anything else in a matrix is not.
-      def scalars(value) = Array(value).select { |item| item.is_a?(String) || item.is_a?(Numeric) }
+      # Only strings and numbers are Rubies; anything else in a matrix is not,
+      # and neither is an expression such as ${{ matrix.ruby }}, whose value
+      # only exists while the workflow runs.
+      def scalars(value)
+        Array(value).select { |item| item.is_a?(Numeric) || (item.is_a?(String) && !item.include?("${{")) }
+      end
 
       # Actions renders a YAML number the way JSON would: 3.0 becomes "3",
       # which setup-ruby reads as the latest 3.x - so a whole float is a bare
