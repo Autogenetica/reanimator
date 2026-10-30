@@ -311,7 +311,7 @@ have to display.
 ## Verifying you have not broken anything
 
 ```bash
-bundle exec rake                                  # 311 examples (1 pending off Linux), StandardRB
+bundle exec rake                                  # 315 examples (1 pending off Linux), StandardRB
 bundle exec exe/reanimator baseline . --execute    # ALIVE — 100% (3/3 required; 9 criteria verified)
 bundle exec exe/reanimator contract .              # posture, criteria, protected paths
 bundle exec exe/reanimator drift .                 # obligations, or drift if recorded
