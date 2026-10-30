@@ -94,8 +94,11 @@ module Reanimator
 
         key = RUBY_KEYS.find { |candidate| matrix.key?(candidate) }
         listed = key ? surviving(matrix, key, scalars(matrix[key])) : []
-        included = Array(matrix["include"]).grep(Hash).flat_map { |entry| RUBY_KEYS.flat_map { |k| scalars(entry[k]) } }
-        (listed + included).map { |value| ruby_label(value) }
+        (listed + included_rubies(matrix)).map { |value| ruby_label(value) }
+      end
+
+      def included_rubies(matrix)
+        Array(matrix["include"]).grep(Hash).flat_map { |entry| RUBY_KEYS.flat_map { |key| scalars(entry[key]) } }
       end
 
       def pinned_rubies(job)
