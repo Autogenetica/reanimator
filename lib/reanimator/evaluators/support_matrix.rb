@@ -33,14 +33,17 @@ module Reanimator
 
       private
 
-      # A workflow Reanimator could not read may hold the very matrix that is
-      # missing, so a missing-evidence verdict is Reanimator's gap, not the
-      # repository's: it becomes unavailable, naming the workflow and why.
+      # A workflow Reanimator could not read is named, never silently left out,
+      # but it does not soften the verdict: the readable workflows decide, so a
+      # narrowing they prove still blocks, and an unread workflow can only mean
+      # Reanimator under-credits - the safe direction. Invalid YAML does not run
+      # in Actions either; one using YAML aliases does, and its Rubies are
+      # simply not counted.
       def unread_workflows(graded)
         unread = discovery.all(:ci_workflow_unreadable)
-        return graded if unread.empty? || graded.status != :missing_evidence
+        return graded if unread.empty? || graded.verified?
 
-        result(:unavailable, detail: "Could not check which Rubies CI exercises: #{unread.map(&:claim).join(" ")}")
+        result(graded.status, detail: "#{graded.detail} Not counted: #{unread.map(&:claim).join(" ")}")
       end
 
       def grade_coverage(ci_versions, declared)

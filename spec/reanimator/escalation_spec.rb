@@ -158,15 +158,44 @@ RSpec.describe "escalation delivery" do
       expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow))).to be_verified
     end
 
-    it "calls a workflow it cannot read its own gap, not untested support" do
+    it "names a workflow it cannot read, without letting it soften the verdict" do
       aliased = "m: &m\n  ruby: [\"3.1\"]\njobs:\n  t:\n    strategy:\n      matrix:\n        <<: *m\n"
       invalid = "jobs: [unclosed\n"
 
       [aliased, invalid].each do |workflow|
         result = support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow))
-        expect(result.status).to eq(:unavailable)
-        expect(result.detail).to start_with("Could not check which Rubies CI exercises: .github/workflows/ci.yml could not be read")
+        expect(result.status).to eq(:missing_evidence)
+        expect(result.detail).to include("Not counted: .github/workflows/ci.yml could not be read")
       end
+    end
+
+    it "keeps a narrowing the readable workflows prove blocking when another workflow cannot be read" do
+      files = blocking_support.merge(".github/workflows/release.yml" => "m: &m {}\njobs:\n  r:\n    <<: *m\n")
+      baseline = Reanimator.baseline(make_repo(files: files))
+
+      expect(baseline.result_for(:support_matrix).status).to eq(:missing_evidence)
+      expect(baseline).to be_needs_attention
+    end
+
+    it "treats exclusions as unknowable when any matrix value is an expression" do
+      other_dimension = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.1\", \"3.4\"]\n        os: ${{ fromJSON(vars.OSES) }}\n" \
+        "        exclude:\n          - ruby: \"3.1\"\n            os: ubuntu-latest\n"
+      nested = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.1\", \"3.4\"]\n        cfg: [{name: a}]\n" \
+        "        exclude:\n          - ruby: \"3.1\"\n            cfg: {name: \"${{ vars.CFG }}\"}\n"
+
+      [other_dimension, nested].each do |workflow|
+        expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow)).status).to eq(:missing_evidence)
+      end
+    end
+
+    it "matches exclude keys without regard to case" do
+      workflow = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.1\", \"3.4\"]\n        exclude:\n          - Ruby: \"3.1\"\n"
+      expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow)).status).to eq(:missing_evidence)
+    end
+
+    it "does not read the floor from a commented-out line" do
+      gemspec = "Gem::Specification.new do |s|\n  # required_ruby_version was bumped from \"3.3\"\n  s.required_ruby_version = \">= 3.1\"\nend\n"
+      expect(support_result(narrowed_support.merge("widget.gemspec" => gemspec)).status).to eq(:missing_evidence)
     end
 
     it "takes no matrix from a workflow that does not parse" do

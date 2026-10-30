@@ -57,7 +57,7 @@ module Reanimator
       # The required_ruby_version expression, without trailing comments, and
       # through the closing bracket when an array spans several lines.
       def requirement_text(body)
-        lines = body.lines.drop_while { |l| !l.include?("required_ruby_version") }
+        lines = body.lines.drop_while { |l| l.lstrip.start_with?("#") || !l.include?("required_ruby_version") }
         return "" if lines.empty?
 
         text = lines.first[/required_ruby_version.*/m]

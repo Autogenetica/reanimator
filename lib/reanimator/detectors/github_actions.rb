@@ -110,15 +110,25 @@ module Reanimator
         key ? surviving(matrix, key, scalars(matrix[key])) : []
       end
 
-      # Whether the exclusions can be read as data. One written as an
-      # expression is only known while the workflow runs, so it could remove
-      # any Ruby; crediting the list anyway would fail open.
+      # Whether the exclusions can be applied as data. An exclusion, or any
+      # matrix value it is matched against, written as an expression is only
+      # known while the workflow runs, so it could remove any Ruby; crediting
+      # the list anyway would fail open.
       def opaque_exclusions?(matrix)
         excludes = matrix["exclude"]
         return false if excludes.nil?
-        return true unless excludes.is_a?(Array)
+        return true unless excludes.is_a?(Array) && excludes.all?(Hash)
 
-        excludes.any? { |entry| !entry.is_a?(Hash) || entry.values.any? { |v| v.is_a?(String) && v.include?("${{") } }
+        expression?(matrix.except("include"))
+      end
+
+      def expression?(value)
+        case value
+        when String then value.include?("${{")
+        when Hash then value.any? { |key, item| expression?(key) || expression?(item) }
+        when Array then value.any? { |item| expression?(item) }
+        else false
+        end
       end
 
       def included_rubies(matrix)
@@ -141,9 +151,15 @@ module Reanimator
         rubies.select do |ruby|
           combinations(others).any? do |combination|
             combination = combination.merge(key => ruby)
-            excludes.none? { |entry| entry.all? { |k, v| combination[k].to_s == v.to_s } }
+            excludes.none? { |entry| entry.all? { |k, v| value_of(combination, k).to_s == v.to_s } }
           end
         end
+      end
+
+      # A combination's value for an exclude key. Keys are compared without
+      # regard to case: if Actions is stricter, this can only under-credit.
+      def value_of(combination, key)
+        combination.find { |name, _| name.to_s.casecmp?(key.to_s) }&.last
       end
 
       def combinations(dimensions)

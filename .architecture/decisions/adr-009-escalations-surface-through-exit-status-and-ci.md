@@ -68,8 +68,10 @@ tested only 3.3 and 3.4 read as verified.
   stand in for the tests, so single-job CI, version files and reusable
   workflows under-credit, as they did before. YAML aliases are refused - a
   workflow is repository input, and an alias bomb would be expanded while
-  reading it - and a workflow that cannot be read makes the check
-  `unavailable`, naming the file, instead of claiming untested support. Drift
+  reading it - and a workflow that cannot be read is named in the result but
+  never softens it: the readable workflows decide, so a narrowing they prove
+  still blocks. (Turning such results into `unavailable` was tried and
+  reverted: one unrelated aliased workflow silenced a required check.) Drift
   snapshots record the same matrix union the evaluator reads. Regex parsing
   was tried first; three reviews each found new false results, and two more
   found gaps in the YAML reader, each closed in the fail-closed direction.
