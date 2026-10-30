@@ -305,6 +305,36 @@ RSpec.describe "escalation delivery" do
       end
     end
 
+    it "fails closed on code hidden where a line-by-line reader cannot follow it" do
+      {
+        "interpolation in a heredoc" => "  s.description = <<~D\n    \#{s.required_ruby_version = \">= 2.7\"; nil}\n  D\n",
+        "=begin inside a heredoc" => "  s.description = <<-D\n=begin\n  D\n  s.required_ruby_version = \">= 2.7\"\n",
+        "next-line method chain" => "  s.required_ruby_version = \">= 3.3\"\n    .sub(\"3.3\", \"2.7\")\n",
+        "next-line operator" => "  s.required_ruby_version = \">= 3.3\"\n    && \">= 2.7\"\n"
+      }.each do |shape, lines|
+        gemspec = "Gem::Specification.new do |s|\n#{lines}end\n"
+        files = gem_with(requirement: "'>= 3.1'", matrix: %w[3.3]).merge("widget.gemspec" => gemspec)
+        expect(support_result(files).status).to eq(:missing_evidence), shape
+      end
+    end
+
+    it "reads a floor set in a local file the gemspec loads" do
+      files = gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(
+        "widget.gemspec" => "require_relative './gemspec'\nGem::Specification.new { |s| common_spec(s) }\n",
+        "gemspec.rb" => "def common_spec(s)\n  s.required_ruby_version = '>= 3.2'\nend\n"
+      )
+      expect(Reanimator.discover(make_repo(files: files)).value(:supported_ruby)).to eq([">= 3.2"])
+      expect(support_result(files).status).to eq(:missing_evidence)
+    end
+
+    it "ignores everything after __END__, and reads a Gem::Requirement.new floor" do
+      gemspec = "Gem::Specification.new do |s|\n  s.required_ruby_version = Gem::Requirement.new(\">= 3.1\")\nend\n__END__\nrequired_ruby_version notes\n"
+      discovered = Reanimator.discover(make_repo(files: narrowed_support.merge("widget.gemspec" => gemspec)))
+
+      expect(discovered.value(:supported_ruby)).to eq([">= 3.1"])
+      expect(discovered.value(:supported_ruby_unreadable)).to be_nil
+    end
+
     it "reads a frozen literal, and a # inside a string is not a comment" do
       gemspec = "Gem::Specification.new do |s|\n  s.required_ruby_version = [\">= 3.1\".freeze, \"!= 3.2.#0\"] # was 2.7\nend\n"
       discovered = Reanimator.discover(make_repo(files: narrowed_support.merge("widget.gemspec" => gemspec)))

@@ -59,7 +59,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   interpolation, a heredoc, a lookup, a value on the next line, `send`, `||=` —
   makes the floor unreadable, reported as missing evidence asking for a
   literal, never read as "no floor". Of 209 installed gems with a gemspec, two
-  are affected. A floor set outside any `.gemspec` file is not seen.
+  are affected. A floor set in a local file the gemspec `require_relative`s or
+  `load`s is read too (one level deep); code a line-by-line reader cannot
+  follow — interpolation in a heredoc, an unclosed `=begin`, a next-line
+  method chain on the floor — makes the floor unreadable, and nothing after
+  `__END__` is read.
   Exclude keys and values match loosely (case aside, `7.0` as `7`), a job with
   `if: false` is not credited, and — as before — a workflow that only runs on
   manual dispatch is still read. Gemspec requirements written as arrays — on one

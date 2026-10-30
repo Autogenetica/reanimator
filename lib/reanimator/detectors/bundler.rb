@@ -69,7 +69,24 @@ module Reanimator
       def gemspec_floors
         @gemspec_floors ||= repository.glob("*.gemspec").sort
           .select { |path| File.file?(repository.absolute(path)) }
-          .map { |path| GemspecFloor.new(path, *read_floor(repository.read(path).to_s)) }
+          .map { |path| GemspecFloor.new(path, *read_floor(with_loaded_files(repository.read(path).to_s))) }
+      end
+
+      # Local files a gemspec loads, by literal path: a floor can be set in a
+      # shared file the gemspec require_relative's or loads. One level deep.
+      LOADED_FILE = /^\s*(?:require_relative|load)\s*\(?\s*["']([^"']+)["']/
+
+      # The gemspec followed by the local files it loads, read as one, so a
+      # floor set in a shared file is seen rather than missing.
+      def with_loaded_files(body)
+        loaded = body.scan(LOADED_FILE).flatten.filter_map do |relative|
+          path = relative.end_with?(".rb") ? relative : "#{relative}.rb"
+          path = File.expand_path(path, repository.path)
+          next unless path.start_with?("#{repository.path}/") && File.file?(path)
+
+          File.read(path)
+        end
+        ([body] + loaded).join("\n")
       end
 
       # The requirements a gemspec declares, and the first line Reanimator
@@ -80,15 +97,28 @@ module Reanimator
       # never silently becomes "no floor", which would credit any matrix.
       def read_floor(body)
         lines = live_lines(body)
+        return [[], "=begin without =end"] unless lines
+
         requirements = lines.each_index.flat_map do |index|
           next [] unless lines[index].include?("required_ruby_version")
 
           value = assigned_value(lines[index], lines.drop(index + 1))
-          return [[], lines[index].strip] unless value && literal?(value)
+          return [[], lines[index].strip] unless value && literal?(value) && !continued?(lines, index, value)
 
           literals(value)
         end
         [requirements.uniq, nil]
+      end
+
+      # A line that carries on the expression above it: a method chain or a
+      # boolean operator at the start of the next line changes the value.
+      CONTINUATION = /\A\s*(?:\.|&\.|&&|\|\||and\b|or\b)/
+
+      # Whether the line after the assignment (and any array it spans) carries
+      # the assigned value on, so the literal is not what Ruby assigns.
+      def continued?(lines, index, value)
+        following = lines.drop(index + value.lines.size).find { |line| !line.strip.empty? }
+        following && CONTINUATION.match?(following)
       end
 
       # The literal requirements every gemspec declares.
@@ -137,14 +167,19 @@ module Reanimator
       end
 
       # Code lines only: full-line comments and =begin/=end blocks blanked.
+      # Code lines only: full-line comments and =begin/=end blocks blanked,
+      # and nothing after __END__. A line starting with #{ is interpolation
+      # inside a string, not a comment, so it stays. Nil when a =begin is
+      # never closed - Ruby would reject the file, so nothing in it is trusted.
       def live_lines(body)
         in_block = false
-        body.lines.map do |line|
+        lines = body.lines.take_while { |line| line.chomp != "__END__" }.map do |line|
           in_block = true if line.start_with?("=begin")
-          live = !in_block && !line.lstrip.start_with?("#")
+          live = !in_block && !(line.lstrip.start_with?("#") && !line.lstrip.start_with?("\#{"))
           in_block = false if line.start_with?("=end")
           live ? line : "\n"
         end
+        lines unless in_block
       end
 
       # The lines that close an array opened, but not closed, in this value.
