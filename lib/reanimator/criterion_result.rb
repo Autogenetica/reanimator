@@ -43,7 +43,12 @@ module Reanimator
     # check is something to fix - including a skipped one, such as a misspelt
     # evaluator or a required matrix nobody declared. Planned (not asked to
     # run) and unavailable (beyond Reanimator for now) are not.
-    def actionable? = %i[failed missing_evidence skipped error].include?(status)
+    def actionable? = problem? || status == :skipped
+
+    # Whether the check itself found something wrong: it failed, could not
+    # find its evidence, or errored. A skipped check found nothing to look at,
+    # which matters only when it was required.
+    def problem? = %i[failed missing_evidence error].include?(status)
 
     def required? = criterion.required?
 

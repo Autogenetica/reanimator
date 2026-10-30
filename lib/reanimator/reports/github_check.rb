@@ -33,10 +33,11 @@ module Reanimator
         planned, unavailable = @baseline.unresolved_tally.values_at(:planned, :unavailable).map(&:to_i)
         if @baseline.needs_attention?
           "Attention needed: #{@baseline.escalations.size} required check(s) need a human."
-        elsif planned.positive?
-          "Not proven yet: #{planned} required check(s) were planned, not run; run with --execute to prove them."
-        elsif unavailable.positive?
-          "Not proven yet: #{unavailable} required check(s) need proof Reanimator cannot establish yet."
+        elsif (planned + unavailable).positive?
+          "Not proven yet: " + [
+            ("#{planned} required check(s) were planned, not run; run with --execute to prove them" if planned.positive?),
+            ("#{unavailable} need proof Reanimator cannot establish yet" if unavailable.positive?)
+          ].compact.join("; ") + "."
         elsif @baseline.executed?
           "No maintenance change was required."
         else

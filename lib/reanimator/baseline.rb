@@ -83,7 +83,7 @@ module Reanimator
     # worth a human's eye; "nothing to check" (skipped) and "not asked to run"
     # (planned) are not problems.
     def advisories
-      results.reject(&:required?).select(&:actionable?).reject { |r| r.status == :skipped }
+      results.reject(&:required?).select(&:problem?)
     end
 
     # Escalations block; advisories are noted.

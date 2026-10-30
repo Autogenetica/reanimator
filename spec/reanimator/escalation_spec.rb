@@ -99,6 +99,38 @@ RSpec.describe "escalation delivery" do
       expect(discovered.value(:ci_ruby_matrix)).to eq(["3", "3.4", "truffleruby+graalvm", "mingw", "3.4.0-preview1"])
     end
 
+    it "subtracts exclude: entries, alone or within a wider matrix" do
+      bare = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.1\", \"3.4\"]\n        exclude:\n          - ruby: \"3.1\"\n"
+      with_os = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.1\", \"3.4\"]\n        os: [ubuntu-latest, macos-latest]\n" \
+        "        exclude:\n          - ruby: \"3.1\"\n            os: ubuntu-latest\n"
+      everywhere = with_os.sub("    include", "    include") + "          - ruby: \"3.1\"\n            os: macos-latest\n"
+
+      expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: bare)).status).to eq(:missing_evidence)
+      expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: with_os))).to be_verified
+      expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: everywhere)).status).to eq(:missing_evidence)
+    end
+
+    it "applies exclude: by value once the matrix is too large to enumerate" do
+      many = (1..40).map { |i| "v#{i}" }.join(", ")
+      workflow = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.1\", \"3.4\"]\n        a: [#{many}]\n        b: [#{many}]\n" \
+        "        exclude:\n          - ruby: \"3.1\"\n            a: v1\n"
+      expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow)).status).to eq(:missing_evidence)
+    end
+
+    it "reads only strings and numbers as Rubies, and refuses YAML aliases outright" do
+      odd = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [{a: 1}, true, null, \"3.4\"]\n"
+      bomb = "a: &a [\"x\", \"x\"]\nb: &b [*a, *a]\njobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [*b, \"3.1\"]\n"
+
+      expect(Reanimator.discover(make_repo(files: gem_with(requirement: "'>= 3.4'", workflow: odd))).value(:ci_ruby_matrix)).to eq(["3.4"])
+      expect(Reanimator.discover(make_repo(files: gem_with(requirement: "'>= 3.1'", workflow: bomb))).all(:ci_ruby_matrix)).to be_empty
+    end
+
+    it "credits a lone job's setup-ruby version when no workflow has a matrix" do
+      lone = "jobs:\n  test:\n    steps:\n      - uses: ruby/setup-ruby@v1\n        with:\n          ruby-version: '3.3'\n"
+      expect(support_result(gem_with(requirement: "'>= 3.3'", workflow: lone))).to be_verified
+      expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: lone)).status).to eq(:missing_evidence)
+    end
+
     it "takes nothing from a workflow that does not parse" do
       broken = "jobs:\n  t:\n    strategy: [unclosed\n      matrix:\n        ruby: [\"3.1\"]\n"
       expect(Reanimator.discover(make_repo(files: gem_with(requirement: "'>= 3.1'", workflow: broken))).all(:ci_ruby_matrix)).to be_empty
@@ -346,6 +378,54 @@ RSpec.describe "escalation delivery" do
       expect(output.lines.first).to match(/\A::stop-commands::\h{32}$/)
       _status, _output, errors = run_cli("drift", root, env: actions)
       expect(errors.lines.first).to match(/\A::stop-commands::\h{32}$/)
+    end
+
+    it "keeps a crafted workflow file name from becoming its own log line" do
+      root = make_repo(files: gem_with(requirement: "'>= 3.3'"))
+      FileUtils.mkdir_p(File.join(root, ".github/workflows", "x\n::error title=forged::forged\n.yml"))
+      out, err, = Open3.capture3(RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__),
+        File.expand_path("../../exe/reanimator", __dir__), "baseline", root, "--format", "json")
+
+      expect((out + err).lines.grep(/\A::error/)).to be_empty
+      expect(JSON.parse(out)["results"].map { |r| r["id"] }).to include("support_matrix")
+    end
+
+    it "does not let a directory named like a workflow knock out the real ones" do
+      root = make_repo(files: gem_with(requirement: "'>= 3.3'"))
+      FileUtils.mkdir_p(File.join(root, ".github/workflows/archive.yml"))
+
+      expect(Reanimator.discover(root).value(:ci_ruby_matrix)).to eq(%w[3.3 3.4])
+    end
+
+    it "keeps every log entry on one line with the default logger" do
+      script = 'Reanimator.logger.warn("first\n::error::forged\r\nlast")'
+      _out, err, = Open3.capture3(RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__), "-rreanimator", "-e", script)
+
+      expect(err.lines.size).to eq(1)
+      expect(err).to include("first ::error::forged last")
+    end
+
+    it "says plainly what a no-op leaves unproven" do
+      root = make_repo(files: {".reanimator.yml" => <<~YAML})
+        version: 1
+        intent: maintain
+        profile: generic
+        autonomy:
+          repair: allowed
+        acceptance:
+          checks:
+            - id: suite
+              run: "true"
+              required: true
+            - id: boot
+              evaluator: http_smoke
+              required: true
+      YAML
+      status, output = run_cli("repair", root)
+
+      expect(status).to eq(0)
+      expect(output).to include("NO-OP", "Nothing to repair. Still unproven, because Reanimator cannot establish the proof yet: boot.")
+      expect(output).not_to include("All required criteria pass")
     end
 
     it "exits 2 when execution was asked for and withheld" do

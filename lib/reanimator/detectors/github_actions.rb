@@ -23,9 +23,13 @@ module Reanimator
 
       # The matrix keys a Ruby workflow uses for the interpreter it tests.
       RUBY_KEYS = %w[ruby ruby-version].freeze
+      # Past this many matrix combinations, exclude: entries are applied by
+      # value alone rather than combination by combination.
+      MAX_COMBINATIONS = 1_000
 
       def detect
-        workflows = repository.glob(".github/workflows/*.yml") + repository.glob(".github/workflows/*.yaml")
+        workflows = (repository.glob(".github/workflows/*.yml") + repository.glob(".github/workflows/*.yaml"))
+          .select { |path| File.file?(repository.absolute(path)) }
         return [] if workflows.empty?
 
         facts = [
@@ -35,6 +39,7 @@ module Reanimator
         ]
 
         facts.concat(ruby_matrix_facts(workflows))
+        facts.concat(pinned_ruby_facts(workflows))
         facts.concat(security_facts(workflows))
         facts
       end
@@ -44,7 +49,7 @@ module Reanimator
       # One fact per workflow, holding every Ruby its jobs' matrices exercise.
       def ruby_matrix_facts(workflows)
         workflows.filter_map do |path|
-          versions = matrix_versions(repository.read(path))
+          versions = jobs(path).flat_map { |job| matrix_rubies(job) }.uniq
           next if versions.empty?
 
           fact(:ci_ruby_matrix, category: :support_matrix,
@@ -53,40 +58,86 @@ module Reanimator
         end
       end
 
-      # Every Ruby named in a job's strategy.matrix - its list and its
-      # include: entries - read as YAML, so comments and exclude: entries are
-      # simply not evidence, and each value is kept as the workflow wrote it
-      # (truffleruby+graalvm, 3.4.0-preview1, ...). A pinned ruby-version on a
-      # single job (a lint job, say) is not a support matrix and is not read.
-      # A workflow that does not parse yields nothing rather than a guess.
-      def matrix_versions(body)
-        jobs = parse(body)&.dig("jobs")
-        return [] unless jobs.is_a?(Hash)
+      # Rubies pinned by a single job's ruby/setup-ruby step. A matrix is the
+      # stronger evidence - a lint job pinned to one Ruby must not stand in for
+      # it - so SupportMatrix reads these only when no workflow has a matrix.
+      def pinned_ruby_facts(workflows)
+        workflows.filter_map do |path|
+          versions = jobs(path).flat_map { |job| pinned_rubies(job) }.uniq
+          next if versions.empty?
 
-        jobs.values.flat_map { |job| job_rubies(job) }.uniq
+          fact(:ci_ruby_pinned, category: :support_matrix,
+            claim: "A CI job runs Ruby: #{versions.join(", ")}.",
+            value: versions, confidence: :medium, source: path, method: :yaml_setup_ruby, detail: versions.join(", "))
+        end
       end
 
-      def job_rubies(job)
-        matrix = job.is_a?(Hash) ? job.dig("strategy", "matrix") : nil
+      # The workflow's jobs, read as YAML. Comments and malformed files give
+      # nothing, and so do YAML aliases: a workflow is repository input, and an
+      # alias bomb would otherwise be expanded while reading it. A workflow that
+      # does not parse yields no evidence rather than a guess.
+      def jobs(path)
+        body = repository.read(path)
+        document = body && YAML.safe_load(body, aliases: false)
+        jobs = document.is_a?(Hash) ? document["jobs"] : nil
+        jobs.is_a?(Hash) ? jobs.values.grep(Hash) : []
+      rescue Psych::Exception
+        []
+      end
+
+      # Every Ruby a job's strategy.matrix actually runs: its Ruby list less
+      # whatever exclude: removes, plus include: entries - the order Actions
+      # applies them in. Values are kept as the workflow wrote them.
+      def matrix_rubies(job)
+        matrix = job.dig("strategy", "matrix")
         return [] unless matrix.is_a?(Hash)
 
-        includes = Array(matrix["include"]).grep(Hash)
-        (rubies_in(matrix) + includes.flat_map { |entry| rubies_in(entry) }).map { |value| ruby_label(value) }
+        key = RUBY_KEYS.find { |candidate| matrix.key?(candidate) }
+        listed = key ? surviving(matrix, key, scalars(matrix[key])) : []
+        included = Array(matrix["include"]).grep(Hash).flat_map { |entry| RUBY_KEYS.flat_map { |k| scalars(entry[k]) } }
+        (listed + included).map { |value| ruby_label(value) }
       end
 
-      def rubies_in(hash) = RUBY_KEYS.flat_map { |key| Array(hash[key]) }
+      def pinned_rubies(job)
+        Array(job["steps"]).grep(Hash)
+          .select { |step| step["uses"].to_s.start_with?("ruby/setup-ruby") && step["with"].is_a?(Hash) }
+          .flat_map { |step| scalars(step["with"]["ruby-version"]) }
+          .map { |value| ruby_label(value) }
+      end
+
+      # The rubies at least one surviving combination still runs.
+      def surviving(matrix, key, rubies)
+        excludes = Array(matrix["exclude"]).grep(Hash)
+        return rubies if excludes.empty?
+
+        others = matrix.except(key, "include", "exclude").transform_values { |values| Array(values) }
+        if others.values.reduce(rubies.size) { |count, values| count * values.size } > MAX_COMBINATIONS
+          excluded = excludes.flat_map { |entry| scalars(entry[key]) }.map(&:to_s)
+          return rubies.reject { |ruby| excluded.include?(ruby.to_s) }
+        end
+
+        rubies.select do |ruby|
+          combinations(others).any? do |combination|
+            combination = combination.merge(key => ruby)
+            excludes.none? { |entry| entry.all? { |k, v| combination[k].to_s == v.to_s } }
+          end
+        end
+      end
+
+      def combinations(dimensions)
+        dimensions.reduce([{}]) do |combos, (name, values)|
+          combos.product(values).map { |combo, value| combo.merge(name => value) }
+        end
+      end
+
+      # Only strings and numbers are Rubies; anything else in a matrix is not.
+      def scalars(value) = Array(value).select { |item| item.is_a?(String) || item.is_a?(Numeric) }
 
       # Actions renders a YAML number the way JSON would: 3.0 becomes "3",
       # which setup-ruby reads as the latest 3.x - so a whole float is a bare
       # major, not 3.0.
       def ruby_label(value)
         (value.is_a?(Float) && value == value.floor) ? value.to_i.to_s : value.to_s
-      end
-
-      def parse(body)
-        body && YAML.safe_load(body, aliases: true)
-      rescue Psych::Exception
-        nil
       end
 
       def security_facts(workflows)

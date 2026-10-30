@@ -33,7 +33,7 @@ module Reanimator
         # required criterion is still unproven - that needs a human, not a no-op.
         return record(:escalation, pre: pre, reason: unproven_reason(pre)) if pre.needs_attention?
 
-        return record(:no_op, pre: pre, reason: "All required criteria pass; no repair is needed.")
+        return record(:no_op, pre: pre, reason: no_op_reason(pre))
       end
 
       resolution = PermissionModel.new(@contract).resolve(@task_class)
@@ -97,6 +97,15 @@ module Reanimator
         patch.apply(eval_dir)
         BaselineRunner.new(EffectivePolicyResolver.new(Repository.at(eval_dir)).resolve, execute: true).run
       end
+    end
+
+    # Honest about what a no-op means: everything required passes, or what
+    # does not is beyond Reanimator for now and no repair could change it.
+    def no_op_reason(pre)
+      waiting = pre.unresolved_required.map { |r| r.criterion.id }
+      return "All required criteria pass; no repair is needed." if waiting.empty?
+
+      "Nothing to repair. Still unproven, because Reanimator cannot establish the proof yet: #{waiting.join(", ")}."
     end
 
     def unproven_reason(pre)

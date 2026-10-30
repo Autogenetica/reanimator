@@ -41,8 +41,12 @@ module Reanimator
   # Quiet by default. The CLI raises verbosity for interactive use; library
   # consumers opt in via Reanimator.logger.level=.
   # Warnings go to stderr, so stdout carries only a command's own output -
-  # --format json must stay parseable even when a detector complains.
-  self.logger ||= Logger.new($stderr, level: Logger::WARN)
+  # --format json must stay parseable even when a detector complains. Each
+  # entry stays on one line: messages can quote repository content (a file
+  # name, a parse error), and inside GitHub Actions a line of its own starting
+  # with "::" would be read as a workflow command.
+  self.logger ||= Logger.new($stderr, level: Logger::WARN,
+    formatter: ->(severity, _time, _program, message) { "reanimator #{severity}: #{message.to_s.gsub(/[\r\n]+/, " ")}\n" })
 
   # @return [Configuration] the process-wide configuration
   def self.configuration

@@ -38,20 +38,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it now compares the declared floor with CI's lowest pinned release across
   every workflow, and a matrix that rose above the floor, or pins no specific
   release, is missing evidence. Workflows are parsed as YAML: every job's
-  `strategy.matrix` Ruby list and `include:` entries count, kept as written;
-  comments, `exclude:` entries and a lone job's pinned `ruby-version` do not.
-  Gemspec requirements written as arrays — on one line or several — or
-  `Gem::Requirement.new(...)` are read; `>= 0` sets no floor.
+  `strategy.matrix` Ruby list counts, less what `exclude:` removes, plus
+  `include:` entries, kept as written. A single job's setup-ruby version counts
+  only when no workflow has a matrix, so a lint job pinned to an old Ruby
+  cannot stand in for the tests. Workflows using YAML aliases give no evidence
+  (an alias bomb is repository input). Gemspec requirements written as arrays —
+  on one line or several — or `Gem::Requirement.new(...)` are read; `>= 0` sets
+  no floor.
+- **An unquoted whole-number Ruby in a matrix reads as a bare major.** YAML
+  turns `3.0` into a number that Actions renders as `3`, which setup-ruby reads
+  as the latest 3.x, so Reanimator now reads it the same way (and `3.10` as
+  `3.1`, as YAML does). A snapshot recorded with 0.1.0 may then show `3.0`
+  removed and `3` added; quote matrix versions, and re-record the snapshot.
 - **Drift snapshots record every workflow's Ruby matrix,** not just the first,
   so drift and the baseline agree. Re-recording a snapshot may show a wider
   matrix than before; that is reported as benign.
 - **A web application's boot smoke is `unavailable`, a new status, not missing
   evidence.** Reanimator does not provision a running service yet; the gap is
   its own, so the repository stays Unproven without being asked to act on it.
-- **Library warnings go to stderr,** so `--format json` stays parseable when a
-  detector complains.
+- **Library warnings go to stderr, one line each,** so `--format json` stays
+  parseable and a message quoting repository content cannot become a workflow
+  command of its own.
 - **A repair with nothing to fix but something unproven escalates** instead of
-  reporting a healthy no-op.
+  reporting a healthy no-op. When the only gap is proof Reanimator cannot
+  establish yet, the no-op says so rather than "all required criteria pass".
 
 ## [0.1.0] - 2026-10-28
 

@@ -16,7 +16,10 @@ module Reanimator
       NO_FLOOR = Gem::Version.new("1")
 
       def call
-        ci = discovery.all(:ci_ruby_matrix).flat_map { |fact| Array(fact.value) }.uniq
+        ci = exercised(:ci_ruby_matrix)
+        # A single job's pinned Ruby counts only when no workflow has a matrix:
+        # a lint job pinned to an old Ruby must not stand in for the tests.
+        ci = exercised(:ci_ruby_pinned) if ci.empty?
         declared = discovery[:supported_ruby]
 
         if ci.any?
@@ -30,6 +33,8 @@ module Reanimator
       end
 
       private
+
+      def exercised(key) = discovery.all(key).flat_map { |fact| Array(fact.value) }.uniq
 
       def grade_coverage(ci_versions, declared)
         floor = declared && declared_floor(declared)
