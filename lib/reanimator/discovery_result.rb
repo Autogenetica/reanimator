@@ -62,11 +62,13 @@ module Reanimator
       lint: :lint_command,
       build: :build_command,
       dependencies: :dependencies_command,
-      assets: :assets_command
+      assets: :assets_command,
+      executable: :executable_command
     }.freeze
 
     # Map of discovered command facts -> command strings, keyed by the profile
-    # criterion they satisfy (:tests, :lint, :build, :dependencies, :assets).
+    # criterion they satisfy (:tests, :lint, :build, :dependencies, :assets,
+    # :executable).
     # @return [Hash{Symbol=>String}]
     def discovered_commands
       COMMAND_FACT_KEYS.each_with_object({}) do |(criterion_id, fact_key), commands|
