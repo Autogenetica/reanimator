@@ -42,6 +42,8 @@ module Reanimator
     # The specification's own example of drift that is *not* alarming: the
     # obligation is identical, only the command spelling moved.
     RENAMED_COMMAND = Verdict.new(:benign, "The same obligation is proven by a differently spelled command.")
+    LOST_COMMAND = Verdict.new(:policy, "The command that proved this obligation is gone; nothing runs to prove it now.")
+    GAINED_COMMAND = Verdict.new(:benign, "A command now proves an obligation that had none.")
     ADDED_WAIVER = Verdict.new(:policy, "An obligation is now accepted as risk instead of proven.")
     REMOVED_WAIVER = Verdict.new(:benign, "Accepted risk was withdrawn; the obligation is blocking again.")
     EXTENDED_WAIVER = Verdict.new(:policy, "Accepted risk was extended, so the exception outlives the decision that made it.")
@@ -78,7 +80,12 @@ module Reanimator
     CRITERION_RULES = [
       CriterionRule.new(:required, "required", ->(before, _after) { before ? RELAXED_OBLIGATION : TIGHTENED_OBLIGATION }),
       CriterionRule.new(:evaluator, "evaluator", ->(_before, _after) { MOVED_EVALUATOR }),
-      CriterionRule.new(:run, "command", ->(_before, _after) { RENAMED_COMMAND })
+      CriterionRule.new(:run, "command", lambda do |before, after|
+        if after.to_s.empty? then LOST_COMMAND
+        elsif before.to_s.empty? then GAINED_COMMAND
+        else RENAMED_COMMAND
+        end
+      end)
     ].freeze
 
     # How a waiver with no expiry reads in a report.
@@ -113,23 +120,27 @@ module Reanimator
     # that reads plausibly and means nothing, and the dangerous direction is
     # "no drift" - quietly reporting a repository unchanged that was never
     # recorded. A git origin names a repository exactly, so it decides whenever
-    # both snapshots carry one; without it the recorded names are the only
-    # evidence there is, and two same-named local checkouts are
-    # indistinguishable.
+    # both snapshots carry one - compared by the repository it names, since the
+    # same repository is cloned over SSH on a laptop and HTTPS in CI. Without an
+    # origin the recorded names are the only evidence there is, and two
+    # same-named local checkouts are indistinguishable.
     def ensure_same_repository
       recorded, current = identities
       return if recorded.nil? || current.nil? || recorded == current
 
       raise ContractError,
-        "Snapshot is for #{recorded}, not #{current}; drift is only meaningful within one repository."
+        "Snapshot is for #{labels.first}, not #{labels.last}; drift is only meaningful within one repository."
     end
 
+    def by_origin? = @previous.origin && @current.origin
+
     def identities
-      if @previous.origin && @current.origin
-        [@previous.origin, @current.origin]
-      else
-        [@previous.repository, @current.repository]
-      end
+      by_origin? ? [@previous.origin_identity, @current.origin_identity] : [@previous.repository, @current.repository]
+    end
+
+    # What the user configured, not the normalised form compared above.
+    def labels
+      by_origin? ? [@previous.origin, @current.origin] : [@previous.repository, @current.repository]
     end
 
     def scalar_changes
