@@ -37,7 +37,12 @@ module Reanimator
     CREDENTIAL_USER_SCHEMES = %w[http https].freeze
 
     # A parsed remote. `path` keeps a leading "/" when it is absolute.
-    Remote = Struct.new(:scheme, :user, :host, :port, :path)
+    Remote = Struct.new(:scheme, :user, :host, :port, :path) do
+      # host, with the port when it is not the scheme's default
+      def address = port ? "#{host}:#{port}" : host
+
+      def forge? = CASE_INSENSITIVE_FORGES.include?(host)
+    end
 
     # Which repository a remote URL names, independent of how it is reached:
     # git@github.com:Org/repo.git and https://github.com/org/repo are the same
@@ -54,11 +59,10 @@ module Reanimator
       remote = parse_remote(url)
       return "raw:#{url.strip}" unless remote
 
-      address = remote.port ? "#{remote.host}:#{remote.port}" : remote.host
-      return "#{address}/#{remote.path.delete_prefix("/").downcase}" if CASE_INSENSITIVE_FORGES.include?(remote.host)
+      return "#{remote.address}/#{remote.path.delete_prefix("/").downcase}" if remote.forge?
 
       user = remote.user unless CREDENTIAL_USER_SCHEMES.include?(remote.scheme)
-      "#{"#{user}@" if user}#{address}:#{remote.path}"
+      "#{"#{user}@" if user}#{remote.address}:#{remote.path}"
     end
 
     # @return [Remote, nil]
