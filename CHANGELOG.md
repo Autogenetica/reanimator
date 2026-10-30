@@ -37,16 +37,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`SupportMatrix` catches narrowed support.** It credited any CI Ruby matrix;
   it now compares the declared floor with CI's lowest pinned release across
   every workflow, and a matrix that rose above the floor, or pins no specific
-  release, is missing evidence. Discovery reads every matrix in a workflow
-  (inline, YAML block lists, `include:` entries and setup-ruby versions), skips
-  commented-out entries, and reads gemspec requirements written as arrays — on
-  one line or several — or `Gem::Requirement.new(...)`; `>= 0` sets no floor.
+  release, is missing evidence. Workflows are parsed as YAML: every job's
+  `strategy.matrix` Ruby list and `include:` entries count, kept as written;
+  comments, `exclude:` entries and a lone job's pinned `ruby-version` do not.
+  Gemspec requirements written as arrays — on one line or several — or
+  `Gem::Requirement.new(...)` are read; `>= 0` sets no floor.
 - **Drift snapshots record every workflow's Ruby matrix,** not just the first,
   so drift and the baseline agree. Re-recording a snapshot may show a wider
   matrix than before; that is reported as benign.
-- **A web application's boot smoke is `skipped`, not missing evidence.**
-  Reanimator does not provision a running service yet; the gap is its own, so
-  the repository stays Unproven without being asked to act on it.
+- **A web application's boot smoke is `unavailable`, a new status, not missing
+  evidence.** Reanimator does not provision a running service yet; the gap is
+  its own, so the repository stays Unproven without being asked to act on it.
+- **Library warnings go to stderr,** so `--format json` stays parseable when a
+  detector complains.
 - **A repair with nothing to fix but something unproven escalates** instead of
   reporting a healthy no-op.
 

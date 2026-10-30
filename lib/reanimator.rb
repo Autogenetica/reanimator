@@ -40,7 +40,9 @@ module Reanimator
 
   # Quiet by default. The CLI raises verbosity for interactive use; library
   # consumers opt in via Reanimator.logger.level=.
-  self.logger ||= Logger.new($stdout, level: Logger::WARN)
+  # Warnings go to stderr, so stdout carries only a command's own output -
+  # --format json must stay parseable even when a detector complains.
+  self.logger ||= Logger.new($stderr, level: Logger::WARN)
 
   # @return [Configuration] the process-wide configuration
   def self.configuration

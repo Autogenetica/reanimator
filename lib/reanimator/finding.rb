@@ -10,10 +10,10 @@ module Reanimator
   #           it is advisory; the names are GitHub's annotation levels
   # title   - what it concerns, e.g. "acme/widget support_matrix"
   # message - what is wrong
-  Finding = Struct.new(:level, :title, :message) do
+  Finding = Data.define(:level, :title, :message) do
     def self.levels = %i[error notice]
 
-    def initialize(level, title, message)
+    def initialize(level:, title:, message:)
       raise UnknownError, "Unknown finding level #{level.inspect}." unless self.class.levels.include?(level)
 
       super

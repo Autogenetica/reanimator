@@ -28,13 +28,15 @@ tested only 3.3 and 3.4 read as verified.
 - **What needs a human is defined once, on the subjects themselves,** as
   `Finding`s (level, title, message). Annotations and summaries consume
   findings and never ask which kind of subject produced them.
-  - `Baseline#escalations`: required criteria that failed, lack evidence, or
-    errored. `planned` (not asked to run) and `skipped` (beyond what
-    Reanimator can establish today, such as a boot smoke it does not provision)
-    keep the state Unproven but do not fail the run - unless the run asked to
-    execute and execution was withheld, when they escalate too. Without that,
-    every Rails application would exit 2 forever on its unprovable `boot`
-    criterion.
+  - `Baseline#escalations`: required criteria a person can act on
+    (`CriterionResult#actionable?`): failed, missing evidence, errored, or
+    skipped - a misspelt evaluator or a required matrix nobody declared is
+    something to fix. `planned` (not asked to run) and `unavailable` (proof
+    Reanimator cannot establish yet, such as a boot smoke it does not
+    provision) keep the state Unproven but do not fail the run - unless the run
+    asked to execute and execution was withheld. Without `unavailable`, every
+    Rails application would exit 2 forever on its `boot` criterion; folding it
+    into `skipped` instead let real, fixable problems exit 0.
   - `Run#needs_attention?`: every outcome except a healthy no-op. A draft PR
     counts: a verified change that exists only as output needs someone to
     submit or review it. A repair that finds nothing failed while something is
@@ -53,10 +55,13 @@ tested only 3.3 and 3.4 read as verified.
   The summary report is chosen by the command, which knows its subject.
 - **`SupportMatrix` compares the declared floor with CI's lowest pinned
   release across every workflow,** per minor release. A matrix above the floor,
-  or one pinning no specific release, is `missing_evidence`. Commented-out
-  entries do not count, `include:` entries and setup-ruby versions do, a bare
-  major such as `"3"` proves no minor, and drift snapshots record the same
-  union of matrices the evaluator reads, so the two cannot disagree.
+  or one pinning no specific release, is `missing_evidence`. Workflows are
+  parsed as YAML, not matched with patterns: only `strategy.matrix` Ruby lists
+  and `include:` entries count, values are kept as written, a whole YAML float
+  (`3.0`) is a bare major as Actions renders it, and a bare major proves no
+  minor. A single job's pinned `ruby-version` (a lint job) is not a support
+  matrix. Drift snapshots record the same union the evaluator reads.
+  Regex parsing was tried first; three reviews each found new false results.
 
 ## Alternatives considered
 

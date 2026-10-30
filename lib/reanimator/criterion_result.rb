@@ -5,9 +5,10 @@ module Reanimator
   # status is drawn from the vocabulary section 14 requires a baseline to
   # separate: verified claims, failed claims, missing evidence, skipped
   # boundaries, and accepted risks - plus "planned" for the read-only,
-  # non-executing default.
+  # non-executing default, and "unavailable" for proof Reanimator itself
+  # cannot establish yet (a boot smoke needs a service it does not run).
   class CriterionResult
-    STATUSES = %i[verified failed missing_evidence skipped accepted_risk planned error].freeze
+    STATUSES = %i[verified failed missing_evidence skipped accepted_risk planned unavailable error].freeze
 
     attr_reader :criterion, :status, :detail, :evidence, :duration
 
@@ -36,7 +37,13 @@ module Reanimator
     # Whether the criterion is still unproven: no evidence either way yet.
     # An evaluator that errored belongs here too - "we could not tell" is not
     # proof, and leaving it out would let a broken check read as green.
-    def unproven? = %i[missing_evidence planned skipped error].include?(status)
+    def unproven? = %i[missing_evidence planned skipped unavailable error].include?(status)
+
+    # Whether a person can act on this result. A failed, unproven or errored
+    # check is something to fix - including a skipped one, such as a misspelt
+    # evaluator or a required matrix nobody declared. Planned (not asked to
+    # run) and unavailable (beyond Reanimator for now) are not.
+    def actionable? = %i[failed missing_evidence skipped error].include?(status)
 
     def required? = criterion.required?
 

@@ -1,40 +1,44 @@
 # frozen_string_literal: true
 
+require "open3"
+
 # Section 16: an escalation has to reach a human without anyone reading a
 # terminal. The CLI's exit status carries it everywhere; inside GitHub Actions
 # it also becomes one annotation per finding and a job-summary entry - and
 # nothing the repository writes can forge or silence either.
-def gem_with(requirement:, matrix: %w[3.3 3.4], workflow: nil)
-  inline = matrix.map { |v| "\"#{v}\"" }.join(", ")
-  {
-    "Gemfile" => "gemspec\n",
-    "widget.gemspec" => "Gem::Specification.new { |s| s.required_ruby_version = #{requirement} }\n",
-    "README.md" => "# widget",
-    ".github/workflows/ci.yml" => workflow || "jobs:\n  test:\n    strategy:\n      matrix:\n        ruby: [#{inline}]\n"
-  }
-end
-
-NARROWED_SUPPORT = gem_with(requirement: "'>= 3.1.0'").freeze
-
-# The same repository, with the owner declaring narrowed support blocking.
-BLOCKING_SUPPORT = NARROWED_SUPPORT.merge(".reanimator.yml" => <<~YAML).freeze
-  version: 1
-  acceptance:
-    checks:
-      - id: support_matrix
-        claim: "Declared Ruby versions are exercised."
-        evaluator: support_matrix
-        required: true
-YAML
-
 RSpec.describe "escalation delivery" do
+  def gem_with(requirement:, matrix: %w[3.3 3.4], workflow: nil)
+    inline = matrix.map { |v| "\"#{v}\"" }.join(", ")
+    {
+      "Gemfile" => "gemspec\n",
+      "widget.gemspec" => "Gem::Specification.new { |s| s.required_ruby_version = #{requirement} }\n",
+      "README.md" => "# widget",
+      ".github/workflows/ci.yml" => workflow || "jobs:\n  test:\n    strategy:\n      matrix:\n        ruby: [#{inline}]\n"
+    }
+  end
+
+  def narrowed_support = gem_with(requirement: "'>= 3.1.0'")
+
+  # The same repository, with the owner declaring narrowed support blocking.
+  def blocking_support
+    narrowed_support.merge(".reanimator.yml" => <<~YAML)
+      version: 1
+      acceptance:
+        checks:
+          - id: support_matrix
+            claim: "Declared Ruby versions are exercised."
+            evaluator: support_matrix
+            required: true
+    YAML
+  end
+
   def support_result(files)
     Reanimator.baseline(make_repo(files: files)).result_for(:support_matrix)
   end
 
   describe Reanimator::Evaluators::SupportMatrix do
     it "treats a CI matrix that rose above the declared floor as missing evidence" do
-      result = support_result(NARROWED_SUPPORT)
+      result = support_result(narrowed_support)
 
       expect(result.status).to eq(:missing_evidence)
       expect(result.detail).to include("Ruby 3.1.0 is declared supported, but CI's lowest Ruby is 3.3")
@@ -76,24 +80,40 @@ RSpec.describe "escalation delivery" do
       expect(support_result(gem_with(requirement: "'>= 3.1'", matrix: %w[3 head])).status).to eq(:missing_evidence)
     end
 
-    it "credits include: entries and setup-ruby versions, but not steps after an empty key" do
+    it "credits include: entries, but not exclude: entries, steps, or a lint job's pinned Ruby" do
       include_entry = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.3\"]\n        include:\n          - ruby: \"3.1\"\n"
+      exclude_entry = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.3\"]\n        exclude:\n          - ruby: \"3.1\"\n"
+      lint_pin = "jobs:\n  test:\n    strategy:\n      matrix:\n        ruby: [\"3.3\", \"3.4\"]\n  lint:\n    steps:\n      - uses: ruby/setup-ruby@v1\n        with:\n          ruby-version: \"3.1\"\n"
       steps = "jobs:\n  t:\n    steps:\n      - uses: ruby/setup-ruby@v1\n        with:\n          ruby-version:\n      - run: bundle exec rake\n"
 
       expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: include_entry))).to be_verified
+      expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: exclude_entry)).status).to eq(:missing_evidence)
+      expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: lint_pin)).status).to eq(:missing_evidence)
       expect(Reanimator.discover(make_repo(files: gem_with(requirement: "'>= 3.1'", workflow: steps))).all(:ci_ruby_matrix)).to be_empty
+    end
+
+    it "keeps every matrix value as the workflow wrote it, and reads a whole YAML float as a bare major" do
+      workflow = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [3.0, \"3.4\", truffleruby+graalvm, mingw, 3.4.0-preview1]\n"
+      discovered = Reanimator.discover(make_repo(files: gem_with(requirement: "'>= 3.0'", workflow: workflow)))
+
+      expect(discovered.value(:ci_ruby_matrix)).to eq(["3", "3.4", "truffleruby+graalvm", "mingw", "3.4.0-preview1"])
+    end
+
+    it "takes nothing from a workflow that does not parse" do
+      broken = "jobs:\n  t:\n    strategy: [unclosed\n      matrix:\n        ruby: [\"3.1\"]\n"
+      expect(Reanimator.discover(make_repo(files: gem_with(requirement: "'>= 3.1'", workflow: broken))).all(:ci_ruby_matrix)).to be_empty
     end
 
     it "ignores a trailing comment and reads an array spread over lines" do
       commented = "Gem::Specification.new { |s| s.required_ruby_version = '>= 3.3' # we dropped \"3.1\"\n}\n"
       multiline = "Gem::Specification.new do |s|\n  s.required_ruby_version = [\n    \">= 3.1\",\n    \"< 4\"\n  ]\nend\n"
 
-      expect(support_result(NARROWED_SUPPORT.merge("widget.gemspec" => commented))).to be_verified
-      expect(support_result(NARROWED_SUPPORT.merge("widget.gemspec" => multiline)).status).to eq(:missing_evidence)
+      expect(support_result(narrowed_support.merge("widget.gemspec" => commented))).to be_verified
+      expect(support_result(narrowed_support.merge("widget.gemspec" => multiline)).status).to eq(:missing_evidence)
     end
 
     it "keeps an unquoted requirement as written" do
-      files = NARROWED_SUPPORT.merge("widget.gemspec" => "Gem::Specification.new { |s| s.required_ruby_version = RUBY_FLOOR }\n")
+      files = narrowed_support.merge("widget.gemspec" => "Gem::Specification.new { |s| s.required_ruby_version = RUBY_FLOOR }\n")
       expect(Reanimator.discover(make_repo(files: files)).value(:supported_ruby)).to eq(["RUBY_FLOOR }"])
     end
 
@@ -128,9 +148,19 @@ RSpec.describe "escalation delivery" do
     end
 
     it "escalates required problems, but not checks that were planned or beyond Reanimator" do
-      baseline = baseline_with(%i[failed missing_evidence skipped error planned verified], required: true)
+      baseline = baseline_with(%i[failed missing_evidence skipped error planned unavailable verified], required: true)
 
-      expect(baseline.escalations.map(&:status)).to eq(%i[failed missing_evidence error])
+      expect(baseline.escalations.map(&:status)).to eq(%i[failed missing_evidence skipped error])
+    end
+
+    it "escalates a required criterion nobody can evaluate - a typo is something to fix" do
+      typo = Reanimator.baseline(make_repo(files: blocking_support.merge(".reanimator.yml" =>
+        blocking_support[".reanimator.yml"].sub("evaluator: support_matrix", "evaluator: suport_matrix"))))
+      undeclared = Reanimator.baseline(make_repo(files: {"README.md" => "x", ".reanimator.yml" => blocking_support[".reanimator.yml"]}))
+
+      expect(typo.result_for(:support_matrix).status).to eq(:skipped)
+      expect(typo).to be_needs_attention
+      expect(undeclared).to be_needs_attention
     end
 
     it "does not hold every Rails app at exit 2 for a boot smoke Reanimator cannot run" do
@@ -139,17 +169,17 @@ RSpec.describe "escalation delivery" do
         ".reanimator.yml" => "version: 1\nintent: maintain\nprofile: rails-app\n"
       }))
 
-      expect(rails.result_for(:boot).status).to eq(:skipped)
+      expect(rails.result_for(:boot).status).to eq(:unavailable)
       expect(rails.state.to_sym).to eq(:unproven)
       expect(rails.escalations.map { |r| r.criterion.id }).not_to include(:boot)
     end
 
-    it "escalates planned and skipped checks when execution was asked for and withheld" do
-      expect(baseline_with(%i[planned skipped], required: true, requested: true).escalations.size).to eq(2)
+    it "escalates planned and unavailable checks when execution was asked for and withheld" do
+      expect(baseline_with(%i[planned unavailable], required: true, requested: true).escalations.size).to eq(2)
     end
 
     it "notes advisory problems without letting them block" do
-      baseline = baseline_with(%i[failed missing_evidence error skipped planned verified], required: false)
+      baseline = baseline_with(%i[failed missing_evidence error skipped planned unavailable verified], required: false)
 
       expect(baseline.advisories.map(&:status)).to eq(%i[failed missing_evidence error])
       expect(baseline).not_to be_needs_attention
@@ -195,7 +225,7 @@ RSpec.describe "escalation delivery" do
     end
 
     it "carries a baseline's blocking criterion as one error" do
-      lines = described_class.new(Reanimator.baseline(make_repo(files: BLOCKING_SUPPORT)).findings).render
+      lines = described_class.new(Reanimator.baseline(make_repo(files: blocking_support)).findings).render
 
       expect(lines.grep(/support_matrix::/)).to contain_exactly(a_string_starting_with("::error ").and(including("CI's lowest Ruby is 3.3")))
     end
@@ -259,7 +289,7 @@ RSpec.describe "escalation delivery" do
     let(:actions) { {"GITHUB_ACTIONS" => "true", "GITHUB_STEP_SUMMARY" => File.join(make_repo(files: {}), "summary.md")} }
 
     it "exits 2, annotates a blocking finding once, and writes the check to the job summary" do
-      status, output = run_cli("baseline", make_repo(files: BLOCKING_SUPPORT), env: actions)
+      status, output = run_cli("baseline", make_repo(files: blocking_support), env: actions)
 
       expect(status).to eq(2)
       expect(output.lines.grep(/\A::error .*support_matrix::/).size).to eq(1)
@@ -267,7 +297,7 @@ RSpec.describe "escalation delivery" do
     end
 
     it "notes advisory problems without failing the job" do
-      status, output = run_cli("baseline", make_repo(files: NARROWED_SUPPORT), env: actions)
+      status, output = run_cli("baseline", make_repo(files: narrowed_support), env: actions)
 
       expect(status).to eq(0)
       expect(output.lines.grep(/\A::notice .*support_matrix::/).size).to eq(1)
@@ -275,14 +305,14 @@ RSpec.describe "escalation delivery" do
     end
 
     it "keeps --format json valid inside Actions" do
-      status, output = run_cli("baseline", make_repo(files: BLOCKING_SUPPORT), "--format", "json", env: actions)
+      status, output = run_cli("baseline", make_repo(files: blocking_support), "--format", "json", env: actions)
 
       expect(status).to eq(2)
       expect(JSON.parse(output)).to include("state" => "unproven")
     end
 
     it "publishes nothing outside Actions but still exits 2" do
-      status, output = run_cli("baseline", make_repo(files: BLOCKING_SUPPORT), env: {"GITHUB_ACTIONS" => nil})
+      status, output = run_cli("baseline", make_repo(files: blocking_support), env: {"GITHUB_ACTIONS" => nil})
 
       expect(status).to eq(2)
       expect(output).not_to include("::")
@@ -290,7 +320,7 @@ RSpec.describe "escalation delivery" do
 
     it "keeps repository text from silencing the real annotations" do
       claim = "Owned.\n::stop-commands::tok\n::error::forged"
-      files = BLOCKING_SUPPORT.merge(".reanimator.yml" => BLOCKING_SUPPORT[".reanimator.yml"].sub(
+      files = blocking_support.merge(".reanimator.yml" => blocking_support[".reanimator.yml"].sub(
         'claim: "Declared Ruby versions are exercised."', "claim: #{claim.inspect}"
       ))
       _status, output = run_cli("baseline", make_repo(files: files), env: actions)
@@ -325,9 +355,34 @@ RSpec.describe "escalation delivery" do
       expect(status).to eq(2)
     end
 
+    it "reports unreadable input before a member's escalation" do
+      status, = run_cli("portfolio", make_repo(files: blocking_support), "/nonexistent/repo")
+      expect(status).to eq(1)
+    end
+
+    it "guards every command that prints a report" do
+      root = make_repo(files: gem_with(requirement: "'>= 3.3'"))
+      [%w[inventory], %w[discover], %w[contract], %w[permissions], %w[families], %w[gates], %w[drift]].each do |(command)|
+        _status, output = run_cli(command, root, env: actions)
+        expect(output.lines.first).to match(/\A::stop-commands::\h{32}$/), command
+      end
+      _status, output = run_cli("agents", env: actions)
+      expect(output.lines.first).to match(/\A::stop-commands::\h{32}$/)
+    end
+
+    it "keeps --format json parseable when a detector warns, with the default logger" do
+      root = make_repo(files: gem_with(requirement: "'>= 3.3'").merge("package.json" => "[1]"))
+      exe = File.expand_path("../../exe/reanimator", __dir__)
+      output, warnings, = Open3.capture3(RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__), exe,
+        "baseline", root, "--format", "json")
+
+      expect(warnings).to include("Commands")
+      expect { JSON.parse(output) }.not_to raise_error
+    end
+
     it "exits 1 when a portfolio path cannot be read, and 2 when a member needs a human" do
       bad, = run_cli("portfolio", make_repo(files: gem_with(requirement: "'>= 3.3'")), "/nonexistent/repo")
-      blocking, = run_cli("portfolio", make_repo(files: gem_with(requirement: "'>= 3.3'")), make_repo(files: BLOCKING_SUPPORT))
+      blocking, = run_cli("portfolio", make_repo(files: gem_with(requirement: "'>= 3.3'")), make_repo(files: blocking_support))
 
       expect(bad).to eq(1)
       expect(blocking).to eq(2)
@@ -350,7 +405,7 @@ RSpec.describe "escalation delivery" do
     end
 
     it "escalates rather than calling a repository healthy when nothing failed but something is unproven" do
-      status, output = run_cli("repair", make_repo(files: BLOCKING_SUPPORT.merge(".reanimator.yml" => <<~YAML)))
+      status, output = run_cli("repair", make_repo(files: blocking_support.merge(".reanimator.yml" => <<~YAML)))
         version: 1
         intent: maintain
         profile: generic

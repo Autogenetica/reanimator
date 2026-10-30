@@ -187,7 +187,7 @@ the submitter needs a dry-run seam the specs use.
 
 **Outcome (2026-10-29).** Decisions: exit status plus check output, no platform
 work; a draft waiting to be submitted counts as needing a human; advisory
-problems are `::notice`. `baseline`, `portfolio`, `repair` and `submit` exit `2`
+problems are `::notice`. `baseline`, `portfolio` and `repair` exit `2`
 when a human is needed (`Finding`s from `Baseline` and `Run`), keeping `1` for
 the tool failing. Inside GitHub Actions, `ActionsSurface` prints one annotation
 per finding and appends the check to the job summary, with reports fenced off
@@ -279,7 +279,7 @@ have to display.
 ## Verifying you have not broken anything
 
 ```bash
-bundle exec rake                                  # 269 examples (1 pending off Linux), StandardRB
+bundle exec rake                                  # 276 examples (1 pending off Linux), StandardRB
 bundle exec exe/reanimator baseline . --execute    # ALIVE — 100% (3/3)
 bundle exec exe/reanimator contract .              # posture, criteria, protected paths
 bundle exec exe/reanimator drift .                 # obligations, or drift if recorded
