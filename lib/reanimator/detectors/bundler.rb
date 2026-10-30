@@ -19,6 +19,9 @@ module Reanimator
 
       # A single declared runtime version paired with the file it came from.
       Pin = Struct.new(:version, :source)
+      # What one gemspec declares: its literal requirements, or the first line
+      # that could not be read as one.
+      GemspecFloor = Struct.new(:path, :requirements, :unreadable)
 
       def detect
         return [] unless repository.exist?("Gemfile") || repository.any?("*.gemspec")
@@ -60,13 +63,13 @@ module Reanimator
         repository.exist?("Gemfile") ? "Gemfile" : first_path("*.gemspec")
       end
 
-      # Each root gemspec's floor, as [path, requirements, unreadable line].
+      # Each root gemspec's floor.
       # Every gemspec counts - a project can ship more than one, and the
       # lowest floor wins downstream.
       def gemspec_floors
         @gemspec_floors ||= repository.glob("*.gemspec").sort
           .select { |path| File.file?(repository.absolute(path)) }
-          .map { |path| [path, *read_floor(repository.read(path).to_s)] }
+          .map { |path| GemspecFloor.new(path, *read_floor(repository.read(path).to_s)) }
       end
 
       # The requirements a gemspec declares, and the first line Reanimator
@@ -89,15 +92,15 @@ module Reanimator
       end
 
       # The literal requirements every gemspec declares.
-      def gemspec_requirements = gemspec_floors.flat_map { |_path, requirements, _unread| requirements }.uniq
+      def gemspec_requirements = gemspec_floors.flat_map(&:requirements).uniq
 
       # The string literals in an assigned value, in order.
       def literals(value) = value.scan(QUOTED).map { |pair| pair.compact.first.strip }
 
       # The first gemspec floor Reanimator could not read, or nil.
       def unreadable_floor
-        path, _requirements, unread = gemspec_floors.find { |_path, _requirements, line| line }
-        path && Pin.new(unread, path)
+        floor = gemspec_floors.find(&:unreadable)
+        floor && Pin.new(floor.unreadable, floor.path)
       end
 
       # At least one string literal, and nothing around the literals but
@@ -158,8 +161,8 @@ module Reanimator
         if (rv = repository.read(".ruby-version"))
           pins << Pin.new(rv.strip, ".ruby-version")
         end
-        gemspec_floors.each do |path, requirements, _unread|
-          requirements.each { |requirement| pins << Pin.new(requirement, path) }
+        gemspec_floors.each do |floor|
+          floor.requirements.each { |requirement| pins << Pin.new(requirement, floor.path) }
         end
         if (gemfile = repository.read("Gemfile")) && (m = gemfile.match(GEMFILE_RUBY))
           pins << Pin.new(m[1].strip, "Gemfile")
