@@ -22,61 +22,40 @@ module Reanimator
       capture(root, "config", "--get", "remote.origin.url")
     end
 
-    # scheme://[user@]host[:port]/path - the only remote form with a port.
-    SCHEME_REMOTE = %r{\A([a-z][a-z0-9+.-]*)://(?:([^@/]+)@)?([^/:]+)(?::(\d+))?/(.+?)(?:\.git)?/?\z}i
-    # [user@]host:path - scp-like; what follows the colon is always path, so
-    # git@github.com:1234/widget names the owner 1234, not a port.
-    SCP_REMOTE = %r{\A(?:([^@/]+)@)?([^/:]+):(?!//)(.+?)(?:\.git)?/?\z}
-    DEFAULT_PORTS = {"ssh" => "22", "https" => "443", "http" => "80", "git" => "9418"}.freeze
-    # Forges where a path is owner/repository, case-insensitive, and the user
-    # is only transport (git@, a CI token). Elsewhere a path is a filesystem
-    # path: case matters, an SSH user selects whose home it is relative to, and
-    # an absolute path is not the same as a home-relative one.
-    CASE_INSENSITIVE_FORGES = %w[github.com gitlab.com bitbucket.org].freeze
-    # Schemes whose user part is a credential rather than part of the address.
-    CREDENTIAL_USER_SCHEMES = %w[http https].freeze
+    # Forges whose repositories are named owner/repo (GitLab adds subgroups),
+    # case-insensitively, with or without .git, and where the user part is only
+    # transport (git@, a CI token). Only these are normalised.
+    FORGES = %w[github.com gitlab.com bitbucket.org].freeze
+    FORGE_HOST = FORGES.map { |host| Regexp.escape(host) }.join("|")
+    # A forge remote, parsed only the way git itself reads it:
+    # scheme://[user[:secret]@]host[:port]/owner/repo or [user@]host:owner/repo.
+    # An scp-like user cannot contain ":" - git splits the host at the first
+    # colon - so evil.example:x@github.com:org/repo is not a GitHub remote.
+    FORGE_REMOTE = %r{\A(?:(?:ssh|git|https?)://(?:[^@/:]+(?::[^@/]*)?@)?(#{FORGE_HOST})(?::\d+)?/|
+                       (?:[^@/:]+@)?(#{FORGE_HOST}):)([\w.-]+(?:/[\w.-]+)+)/?\z}xi
+    # Prefix for remotes compared exactly; forge identities never contain "=".
+    EXACT = "="
 
-    # A parsed remote. `path` keeps a leading "/" when it is absolute.
-    Remote = Struct.new(:scheme, :user, :host, :port, :path) do
-      # host, with the port when it is not the scheme's default
-      def address = port ? "#{host}:#{port}" : host
-
-      def forge? = CASE_INSENSITIVE_FORGES.include?(host)
-    end
-
-    # Which repository a remote URL names, independent of how it is reached:
-    # git@github.com:Org/repo.git and https://github.com/org/repo are the same
-    # repository. Anything that could tell two repositories apart is kept - a
-    # non-default port, path case and the SSH user off the known forges, an
-    # absolute versus a home-relative path. File URLs, local paths and
-    # unrecognised forms get their own "raw:" namespace and only match exactly.
+    # Which repository a remote URL names. On the known forges, every way of
+    # reaching one repository - SSH or HTTPS, any user or token, any case, with
+    # or without .git - has one identity. Every other remote is compared
+    # exactly, apart from surrounding whitespace and a trailing slash: off the
+    # forges, users, ports, case, .git and absolute versus home-relative paths
+    # can each name a different repository, and guessing wrong would report
+    # "no drift" against another repository's snapshot. The cost is that a
+    # self-hosted forge checked over a different transport is refused - the
+    # safe direction.
     #
     # @param url [String, nil]
-    # @return [String, nil] e.g. "github.com/org/repo"
+    # @return [String, nil] e.g. "github.com/org/repo", or "=git@host:/srv/repo"
     def remote_identity(url)
       return if url.nil?
 
-      remote = parse_remote(url)
-      return "raw:#{url.strip}" unless remote
+      text = url.strip
+      forge = FORGE_REMOTE.match(text)
+      return "#{EXACT}#{text.chomp("/")}" unless forge
 
-      return "#{remote.address}/#{remote.path.delete_prefix("/").downcase}" if remote.forge?
-
-      user = remote.user unless CREDENTIAL_USER_SCHEMES.include?(remote.scheme)
-      "#{"#{user}@" if user}#{remote.address}:#{remote.path}"
-    end
-
-    # @return [Remote, nil]
-    def parse_remote(url)
-      url = url.to_s.strip
-      if (scheme = SCHEME_REMOTE.match(url))
-        return if scheme[1].casecmp?("file")
-
-        name = scheme[1].downcase
-        port = scheme[4] unless DEFAULT_PORTS[name] == scheme[4]
-        Remote.new(name, scheme[2], scheme[3].downcase, port, "/#{scheme[5]}")
-      elsif (scp = SCP_REMOTE.match(url))
-        Remote.new("ssh", scp[1], scp[2].downcase, nil, scp[3])
-      end
+      "#{(forge[1] || forge[2]).downcase}/#{forge[3].delete_suffix(".git").downcase}"
     end
 
     # @return [Boolean] whether an "upstream" remote is configured, a strong

@@ -36,7 +36,7 @@ changing a single line of code*. Read-only first, and read-only by default.
 
 ```bash
 bin/setup                                       # bundle install
-bundle exec rake                                # specs + StandardRB (expect 290 examples; 1 pending off Linux)
+bundle exec rake                                # specs + StandardRB (expect 288 examples; 1 pending off Linux)
 bundle exec exe/reanimator baseline . --execute  # prove this repo on itself
 bundle exec exe/reanimator contract .            # resolved contract, incl. security posture
 bundle exec exe/reanimator drift .               # compare with the committed snapshot (CI does)
@@ -59,9 +59,14 @@ This repository stewards itself: the `stewardship` CI job runs
 snapshot is re-recorded in the same pull request: a changed intent, profile or
 posture, widened autonomy, an unprotected path, a narrowed Ruby matrix, a
 removed security control, a dropped or relaxed required criterion, a moved
-evaluator, or a criterion whose command disappeared. Benign changes — a renamed
-command, narrowed autonomy, a dropped optional check, a wider matrix — only show
-in the drift report, so re-record after those too, or the snapshot goes stale.
+evaluator, a criterion whose command disappeared, or a waiver added, extended,
+or given an expiry that cannot be read. A lost command counts even on an optional
+check, while dropping that check is benign: a criterion that stays but proves
+nothing is a silent hole, where a removed one is a visible decision. Benign
+changes — a renamed command, narrowed autonomy, a dropped optional check, a
+wider matrix — only show in the drift report, so re-record after those too, or
+the snapshot goes stale. Drift recognises one repository across transports only
+on github.com, gitlab.com and bitbucket.org; other remotes must match exactly.
 The drift step is skipped in forks, whose origin is a different repository.
 
 ## What is deliberately not built yet

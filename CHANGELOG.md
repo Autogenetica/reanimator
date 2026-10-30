@@ -85,10 +85,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- **Drift recognises one repository across SSH and HTTPS remotes.** Origins are
-  compared by the repository they name, so a snapshot recorded over SSH on a
-  laptop is no longer refused as "a different repository" when checked from an
-  HTTPS checkout in CI. Two genuinely different owners are still refused.
+- **Drift recognises one repository across SSH and HTTPS on github.com,
+  gitlab.com and bitbucket.org.** On those forges a snapshot recorded over SSH
+  on a laptop is no longer refused when checked from an HTTPS clone in CI. Every
+  other remote is compared exactly: off the known forges, users, ports, case,
+  `.git` and path anchoring can each name a different repository, so a
+  self-hosted forge checked over a different transport is still refused — the
+  safe direction — rather than risk reporting "no drift" against another
+  repository's snapshot.
+- **A criterion whose command disappears is policy drift,** not a benign
+  rename, so losing the proof behind an obligation can no longer pass quietly.
 
 ## [0.1.0] - 2026-10-28
 
