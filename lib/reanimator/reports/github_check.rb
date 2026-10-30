@@ -30,8 +30,7 @@ module Reanimator
       # Agrees with the exit status: "attention needed" only when a required
       # check needs a human, not when checks were merely planned.
       def checks_summary
-        planned = @baseline.unresolved_required.count { |r| r.status == :planned }
-        unavailable = @baseline.unresolved_required.count { |r| r.status == :unavailable }
+        planned, unavailable = @baseline.unresolved_tally.values_at(:planned, :unavailable).map(&:to_i)
         if @baseline.needs_attention?
           "Attention needed: #{@baseline.escalations.size} required check(s) need a human."
         elsif planned.positive?

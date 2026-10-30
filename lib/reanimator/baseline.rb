@@ -73,6 +73,11 @@ module Reanimator
 
     def needs_attention? = escalations.any?
 
+    # How many unresolved required criteria sit in each status, e.g.
+    # {planned: 2, unavailable: 1}.
+    # @return [Hash{Symbol=>Integer}]
+    def unresolved_tally = unresolved_required.map(&:status).tally
+
     # Advisory criteria that found a real problem - failed, missing evidence,
     # or errored. They never block, so they never fail a run, but they are
     # worth a human's eye; "nothing to check" (skipped) and "not asked to run"
