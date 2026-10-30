@@ -80,6 +80,36 @@ RSpec.describe Reanimator::Discovery do
       expect(result.discovered_commands[:executable]).to eq("ruby -Ilib exe/committed --help")
     end
 
+    def committed_gem(files, modes)
+      root = make_repo(files: {"widget.gemspec" => "x"}.merge(files))
+      modes.each { |path, mode| File.chmod(mode, File.join(root, path)) }
+      system("git", "-C", root, "init", "-q", "-b", "main", out: File::NULL)
+      system("git", "-C", root, "add", "-A", out: File::NULL)
+      system("git", "-C", root, "-c", "user.email=t@e.com", "-c", "user.name=T", "commit", "-qm", "f", out: File::NULL)
+      root
+    end
+
+    it "rejects a file committed without the executable bit, whatever the filesystem says" do
+      root = committed_gem({"exe/widget" => "x"}, {"exe/widget" => 0o644})
+      File.chmod(0o755, File.join(root, "exe/widget"))
+
+      expect(Reanimator::Discovery.new(Reanimator::Repository.at(root)).run.discovered_commands).not_to have_key(:executable)
+    end
+
+    it "ignores a directory in exe/, even one holding executables" do
+      root = committed_gem({"exe/aaa/tool" => "x", "exe/widget" => "x"}, {"exe/aaa/tool" => 0o755, "exe/widget" => 0o755})
+
+      expect(Reanimator::Discovery.new(Reanimator::Repository.at(root)).run.discovered_commands[:executable])
+        .to eq("ruby -Ilib exe/widget --help")
+    end
+
+    it "offers the first executable in name order" do
+      root = committed_gem({"exe/zeta" => "x", "exe/alpha" => "x"}, {"exe/zeta" => 0o755, "exe/alpha" => 0o755})
+
+      expect(Reanimator::Discovery.new(Reanimator::Repository.at(root)).run.discovered_commands[:executable])
+        .to eq("ruby -Ilib exe/alpha --help")
+    end
+
     it "loads the gem through its bundle when there is one" do
       result = discover_gem({"Gemfile" => "gemspec\n", "exe/widget" => "x"}, executable: %w[exe/widget])
       expect(result.discovered_commands[:executable]).to eq("bundle exec exe/widget --help")

@@ -179,10 +179,12 @@ RSpec.describe Reanimator::DriftDetector do
     criteria = ->(run) { [{id: :exe, evaluator: :command, run: run, required: false}] }
 
     lost = described_class.between(snapshot(criteria: criteria.call("bin/x --help")), snapshot(criteria: criteria.call(nil)))
+    emptied = described_class.between(snapshot(criteria: criteria.call("bin/x --help")), snapshot(criteria: criteria.call("")))
     gained = described_class.between(snapshot(criteria: criteria.call(nil)), snapshot(criteria: criteria.call("bin/x --help")))
 
-    expect(lost).to be_requires_review
-    expect(gained).not_to be_requires_review
+    expect(lost.policy_changes.map(&:verdict)).to eq([described_class::LOST_COMMAND])
+    expect(emptied.policy_changes.map(&:verdict)).to eq([described_class::LOST_COMMAND])
+    expect(gained.benign_changes.map(&:verdict)).to eq([described_class::GAINED_COMMAND])
   end
 
   it "refuses to compare two different repositories" do
