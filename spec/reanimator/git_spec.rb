@@ -37,6 +37,11 @@ RSpec.describe Reanimator::Git do
       github = identity("git@github.com:org/repo.git")
       [
         "evil.example:x@github.com:org/repo.git",
+        "evil.example:git@github.com:org/repo.git",
+        "http://github.com/org/repo",
+        "ssh://bob@github.com/org/repo",
+        "bob@github.com:org/repo",
+
         "git@github.com.evil.example:org/repo.git",
         "https://github.com.evil.example/org/repo",
         "[evil.example]x@github.com:org/repo",
@@ -49,6 +54,12 @@ RSpec.describe Reanimator::Git do
         "ssh://git@github.com:2222/org/repo",
         "https://github.com:8443/org/repo"
       ].each { |remote| expect(identity(remote)).not_to eq(github), remote }
+    end
+
+    it "compares a single-segment path or a non-ASCII spelling exactly, never as a forge" do
+      ["git@github.com:repo", "git@bitbuc\u212Aet.org:org/repo"].each do |remote|
+        expect(identity(remote)).to start_with("="), remote
+      end
     end
 
     it "accepts only allow-listed characters in userinfo, so nothing can redirect the host" do

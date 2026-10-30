@@ -60,7 +60,9 @@ module Reanimator
       return if url.nil?
 
       text = url.strip
-      forge = FORGE_REMOTE.match(text)
+      # Case-insensitive matching folds some non-ASCII letters (a Kelvin sign
+      # for K), so only an ASCII remote is a candidate for normalising.
+      forge = text.ascii_only? && FORGE_REMOTE.match(text)
       return "#{EXACT}#{text}" unless forge
 
       "#{forge[:host].downcase}/#{forge[:path].delete_suffix(".git").downcase}"
