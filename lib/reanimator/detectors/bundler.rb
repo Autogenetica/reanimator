@@ -70,8 +70,11 @@ module Reanimator
         values = floor_assignments(body)
         return [] if values.empty? || values.any? { |value| !literal?(value) }
 
-        values.flat_map { |value| value.scan(QUOTED).map { |pair| pair.compact.first.strip } }.uniq
+        values.flat_map { |value| literals(value) }.uniq
       end
+
+      # The string literals in an assigned value, in order.
+      def literals(value) = value.scan(QUOTED).map { |pair| pair.compact.first.strip }
 
       # A gemspec floor assigned from something other than literals, or nil.
       def unreadable_floor
