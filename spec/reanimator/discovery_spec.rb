@@ -7,7 +7,7 @@ RSpec.describe Reanimator::Discovery do
 
   describe "a conventional Ruby gem" do
     subject(:result) do
-      discover(files: {
+      root = make_repo(files: {
         "Gemfile" => "source 'https://rubygems.org'\ngemspec\n",
         "Gemfile.lock" => "GEM\n",
         "widget.gemspec" => "Gem::Specification.new do |s|\n  s.required_ruby_version = '>= 3.1.0'\nend\n",
@@ -15,6 +15,8 @@ RSpec.describe Reanimator::Discovery do
         ".standard.yml" => "ruby_version: 3.1\n",
         "exe/widget" => "#!/usr/bin/env ruby\n"
       })
+      File.chmod(0o755, File.join(root, "exe/widget"))
+      Reanimator::Discovery.new(Reanimator::Repository.at(root)).run
     end
 
     it "detects the gem, its commands, and its runtime pin with provenance" do
@@ -32,6 +34,55 @@ RSpec.describe Reanimator::Discovery do
 
     it "suggests the ruby-cli profile because it ships an executable" do
       expect(result.suggested_profile).to eq(:"ruby-cli")
+    end
+
+    it "offers the shipped executable as the proof that it boots" do
+      expect(result.discovered_commands).to include(executable: "bundle exec exe/widget --help")
+      expect(result.command_fact(:executable).provenance.source).to eq("exe/widget")
+    end
+  end
+
+  describe "a gem's shipped executable" do
+    # Checkouts carry the executable bit; fixtures have to set it.
+    def discover_gem(files, executable: [])
+      root = make_repo(files: {"widget.gemspec" => "x"}.merge(files))
+      executable.each { |path| File.chmod(0o755, File.join(root, path)) }
+      Reanimator::Discovery.new(Reanimator::Repository.at(root)).run
+    end
+
+    it "does not offer bin/ developer scripts" do
+      result = discover_gem({"bin/console" => "#!/bin/sh\n", "bin/setup" => "#!/bin/sh\n"},
+        executable: %w[bin/console bin/setup])
+      expect(result.discovered_commands).not_to have_key(:executable)
+    end
+
+    it "skips dotfiles and files without the executable bit" do
+      result = discover_gem({"exe/.DS_Store" => "x", "exe/README" => "docs", "exe/widget" => "#!/usr/bin/env ruby\n"},
+        executable: %w[exe/.DS_Store exe/widget])
+      expect(result.discovered_commands[:executable]).to eq("ruby -Ilib exe/widget --help")
+    end
+
+    it "shell-escapes a repository-controlled filename" do
+      result = discover_gem({"exe/a;touch PWNED;#" => "x"}, executable: ["exe/a;touch PWNED;#"])
+      expect(result.discovered_commands[:executable]).to eq("ruby -Ilib exe/a\\;touch\\ PWNED\\;\\# --help")
+    end
+
+    it "takes the committed mode over the local filesystem bit in a git checkout" do
+      root = make_repo(files: {"widget.gemspec" => "x", "exe/committed" => "x", "exe/local" => "x"})
+      File.chmod(0o755, File.join(root, "exe/committed"))
+      system("git", "-C", root, "init", "-q", "-b", "main", out: File::NULL)
+      system("git", "-C", root, "add", "-A", out: File::NULL)
+      system("git", "-C", root, "-c", "user.email=t@e.com", "-c", "user.name=T", "commit", "-qm", "f", out: File::NULL)
+      File.chmod(0o644, File.join(root, "exe/committed"))
+      File.chmod(0o755, File.join(root, "exe/local"))
+
+      result = Reanimator::Discovery.new(Reanimator::Repository.at(root)).run
+      expect(result.discovered_commands[:executable]).to eq("ruby -Ilib exe/committed --help")
+    end
+
+    it "loads the gem through its bundle when there is one" do
+      result = discover_gem({"Gemfile" => "gemspec\n", "exe/widget" => "x"}, executable: %w[exe/widget])
+      expect(result.discovered_commands[:executable]).to eq("bundle exec exe/widget --help")
     end
   end
 

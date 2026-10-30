@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "shellwords"
+
 module Reanimator
   module Detectors
     # Discovers the commands a repository already uses to prove itself
@@ -16,7 +18,8 @@ module Reanimator
           test_command,
           lint_command,
           build_command,
-          assets_command
+          assets_command,
+          executable_command
         ].compact
       end
 
@@ -67,6 +70,43 @@ module Reanimator
 
         command(:assets_command, script,
           claim: "Assets build via the package.json build script.", source: "package.json")
+      end
+
+      # A gem's shipped executable proves it boots by answering --help. Only
+      # exe/ counts: bin/ holds developer scripts, not product surface. Dotfiles
+      # (.DS_Store, .gitkeep) and files without the executable bit are not
+      # executables, and the path is shell-escaped because it comes from the
+      # repository and is run through `sh -c`.
+      def executable_command
+        return unless first_path("*.gemspec")
+
+        exe = shipped_executable
+        return unless exe
+
+        command(:executable_command, "#{executable_runner} #{Shellwords.escape(exe)} --help",
+          claim: "The shipped executable #{exe} answers --help.", source: exe, confidence: :high)
+      end
+
+      def shipped_executable
+        repository.glob("exe/*").sort.find do |path|
+          !File.basename(path).start_with?(".") && File.file?(repository.absolute(path)) && executable?(path)
+        end
+      end
+
+      # In a git checkout, executable means committed with mode 100755 - what a
+      # clone in CI will have - not whatever the local filesystem bit says. A
+      # tree without git (such as an export of HEAD) carries the committed modes
+      # on disk, so the filesystem bit is the answer there.
+      def executable?(path)
+        return File.executable?(repository.absolute(path)) unless Git.repository?(repository.path)
+
+        Git.capture(repository.path, "ls-files", "-s", "--", path).to_s.start_with?("100755 ")
+      end
+
+      # Without a Gemfile there is no bundle to load the gem through, so put
+      # its own lib/ on the load path instead.
+      def executable_runner
+        repository.exist?("Gemfile") ? "bundle exec" : "ruby -Ilib"
       end
 
       # --- helpers -------------------------------------------------------------
