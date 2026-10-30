@@ -67,13 +67,16 @@ module Reanimator
           line = lines[index]
           next if line.lstrip.start_with?("#") || !line.include?("required_ruby_version")
 
-          text = line[/required_ruby_version.*/m]
-          if text.include?("[") && !text.include?("]")
-            rest = lines.drop(index + 1)
-            text += rest[0..(rest.index { |l| l.include?("]") } || -1)].join
-          end
+          text = line[/required_ruby_version.*/m] + array_continuation(line, lines.drop(index + 1))
           text.lines.map { |l| l.sub(/\s+#.*$/, "") }.join
         end
+      end
+
+      # The lines that close an array opened, but not closed, on this line.
+      def array_continuation(line, rest)
+        return "" unless line.include?("[") && !line.include?("]")
+
+        rest[0..(rest.index { |l| l.include?("]") } || -1)].join
       end
 
       # @return [Array<Pin>] de-duplicated runtime pins, strongest source first
