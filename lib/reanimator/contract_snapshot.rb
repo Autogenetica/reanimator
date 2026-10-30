@@ -176,6 +176,10 @@ module Reanimator
       waivers.find { |waiver| waiver[:target] == target }&.[](:expires)
     end
 
+    # The repository the recorded origin names, however it was cloned - the
+    # same repository over SSH and HTTPS has one identity. Nil without an origin.
+    def origin_identity = Git.remote_identity(origin)
+
     def to_h
       {
         repository: repository, origin: origin,
