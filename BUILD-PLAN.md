@@ -63,7 +63,7 @@ patch:
 | 08 | Agent connections, commissioning, routing | done |
 | 09 | Acceptance criteria, verifier isolation, waivers | done |
 | 10 | Repository families & compatibility graphs | done |
-| 11 | Autonomy ladder & permission model | ladder done; **`submit` rung not wired** |
+| 11 | Autonomy ladder & permission model | ladder done; **`submit` rung paused** (needs §12 isolation; PR #14) |
 | 12 | Security controls | done — denied egress enforced on Linux, refused elsewhere (Slice 1) |
 | 13/17 | Bounded repair & run ledger | done (no writes) |
 | 14–15 | Baseline & proof-of-life | done |
@@ -72,7 +72,8 @@ patch:
 | 19 | Portability | satisfied by ADR-004 (agents as replaceable adapters) |
 | 20 | v1 defaults | done (autonomy defaults, posture defaults, Ruby/Rails first) |
 
-Slices 1 and 3 are done; Slice 2 (submit) is paused and the rest remain. They are ordered by how much the rest
+Slices 1, 3 and 4 are done. Slice 2 is paused until §12 user and filesystem
+isolation exists, and Slice 5 remains. They are ordered by how much the rest
 depends on them.
 
 ---
@@ -140,7 +141,20 @@ unprotected. Prove it by running the CLI, not just the suite.
 
 ---
 
-## Slice 2 — Wire the `submit` rung (§11)
+## Slice 2 — Wire the `submit` rung (§11) — paused
+
+**Status (2026-10-30).** Built and reviewed adversarially twice in PR #14,
+which stays open as a draft. The owner's decisions stand: a token from
+`REANIMATOR_GITHUB_TOKEN`, opt-in by contract and run. The second review
+showed the two-step design (`repair --propose`, then `submit`) is not a
+boundary while checks run as the invoking user: a check can leave a process
+behind that reads the submit step's token or rewrites the proposal file, and
+`git archive` exports differ from HEAD under `.gitattributes`. Resume after
+§12 user and filesystem isolation exists, starting from PR #14 and both
+reviews' findings.
+
+The original brief follows.
+
 
 **The gap.** The artifact exists and the write does not. `ProposedChange`
 produces the draft-PR body; `Run::OUTCOMES` includes `:draft_pr`; `RepairRun`
@@ -217,7 +231,20 @@ visible, non-duplicating escalation in CI without anyone reading a terminal.
 
 ---
 
-## Slice 4 — Make the tool steward itself (self-hosting)
+## Slice 4 — Make the tool steward itself (self-hosting) — done
+
+**Outcome (2026-10-28).** Owner chose both gates. `.github/dependabot.yml`
+(bundler and github-actions, weekly, grouped) and a TruffleHog job (pinned
+v3.99.2, binary included) close the two advisory gaps. A single-Ruby
+`stewardship` CI job runs `baseline . --execute` and `drift .` against the
+committed `.reanimator-snapshot.json`. Two defects surfaced on the way and were
+fixed first: the `ruby-cli` executable criterion never received the `exe/`
+command discovery had already found, and drift refused SSH-recorded snapshots
+checked from HTTPS clones — which would have failed this CI on its first run.
+This repository now reads ALIVE with every criterion verified.
+
+The original brief follows.
+
 
 Two small items, both deliberately deferred rather than forgotten, and both now
 unblocked:
@@ -279,7 +306,7 @@ have to display.
 ## Verifying you have not broken anything
 
 ```bash
-bundle exec rake                                  # 305 examples (1 pending off Linux), StandardRB
+bundle exec rake                                  # 290 examples (1 pending off Linux), StandardRB
 bundle exec exe/reanimator baseline . --execute    # ALIVE — 100% (3/3)
 bundle exec exe/reanimator contract .              # posture, criteria, protected paths
 bundle exec exe/reanimator drift .                 # obligations, or drift if recorded

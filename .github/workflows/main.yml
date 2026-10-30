@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Run by hand to re-scan the whole history for secrets: the TruffleHog
+  # action scans every commit on workflow_dispatch, only the new range otherwise.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -29,3 +32,45 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Run tests and linter
         run: bundle exec rake
+
+  secrets:
+    name: Secret scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # The action is pinned to the commit behind v3.99.2, and the scanner
+      # image to the same release. The image is pulled by tag - the action
+      # takes no digest - so this pins the release, not its bytes. Bump both
+      # together by hand: Dependabot ignores this action, because it would move
+      # the SHA and leave the version input behind.
+      # verified,unknown reports secrets confirmed live and ones that could not
+      # be checked; it drops unverified results (the provider said invalid) and
+      # findings from detectors that cannot verify at all.
+      - uses: trufflesecurity/trufflehog@e76dff8a7e57d6df0c60ad8cbf5d5cba505a8fc9 # v3.99.2
+        with:
+          version: 3.99.2
+          extra_args: --results=verified,unknown
+
+  # Reanimator stewards its own repository: the baseline annotates anything
+  # that needs a human, and drift fails when the contract's policy changed
+  # against the committed snapshot. Benign changes (a renamed command, a wider
+  # matrix) are reported but do not fail. One Ruby, so findings are not
+  # annotated once per matrix entry.
+  stewardship:
+    name: Self-stewardship
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - name: Prove this repository with Reanimator
+        run: bundle exec exe/reanimator baseline . --execute --format check
+      # The snapshot names this repository's origin, so a fork's own main
+      # would be refused as a different repository; forks skip this step.
+      - name: Check the contract has not drifted from the recorded snapshot
+        if: github.repository == 'Autogenetica/reanimator'
+        run: bundle exec exe/reanimator drift .

@@ -34,6 +34,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A gem's shipped executable is discovered as its boot proof.** The
+  `ruby-cli` profile's "executable answers --help" criterion now runs the first
+  `exe/` entry with `--help` instead of reporting no command, so CLI gems are no
+  longer asked to declare what discovery already found. `bin/` developer
+  scripts are not offered.
 - **`SupportMatrix` catches narrowed support.** It credited any CI Ruby matrix;
   it now compares the declared floor with CI's lowest pinned release across
   every workflow, and a matrix that rose above the floor, or pins no specific
@@ -77,6 +82,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A repair with nothing to fix but something unproven escalates** instead of
   reporting a healthy no-op. When the only gap is proof Reanimator cannot
   establish yet, the no-op says so rather than "all required criteria pass".
+
+### Fixed
+
+- **Drift recognises one repository across SSH and HTTPS remotes.** Origins are
+  compared by the repository they name, so a snapshot recorded over SSH on a
+  laptop is no longer refused as "a different repository" when checked from an
+  HTTPS checkout in CI. Two genuinely different owners are still refused.
 
 ## [0.1.0] - 2026-10-28
 
