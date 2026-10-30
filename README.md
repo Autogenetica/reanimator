@@ -510,7 +510,7 @@ Two rules are **enforced**, not just documented:
 | 10 Repository families & compatibility graphs | ✅ `Relationship`, `Family`, `FamilyInference`, `Family::GateRunner` |
 | 12 Security controls | ✅ `SecurityControl`, `SecurityPosture#obligations`, `Evaluators::SecurityEvidence`, `EgressControl` (denied egress enforced on Linux, refused elsewhere; the balanced registry allowlist is advisory) |
 | 16 Escalation delivery | ✅ Exit status 2, `Reports::Annotations`, `ActionsSurface` (annotations + job summary); `SupportMatrix` catches narrowed support |
-| Draft-PR *submission* to GitHub | ⏳ Deliberate opt-in; artifact is ready, the write is not wired |
+| Draft-PR *submission* to GitHub | ⏸ Paused until §12 user/filesystem isolation exists; the draft-PR artifact is ready, the write is not wired |
 | GitHub App, web UI | ⏳ Explicitly later (spec sections 03, 18) |
 
 See [`.architecture/decisions`](.architecture/decisions) for the reasoning
