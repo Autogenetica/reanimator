@@ -241,10 +241,11 @@ committed `.reanimator-snapshot.json`. Two defects surfaced on the way and were
 fixed first: the `ruby-cli` executable criterion never received the `exe/`
 command discovery had already found, and drift refused SSH-recorded snapshots
 checked from HTTPS clones — which would have failed this CI on its first run.
-Three adversarial reviews then broke successive normalisations of remote
+Four adversarial reviews then broke successive normalisations of remote
 identity in the dangerous direction (two repositories read as one), so only
-github.com, gitlab.com and bitbucket.org are normalised, parsed strictly the
-way git reads them, and every other remote compares exactly. This repository
+the standard forms the three known forges hand out are normalised - https with
+an allow-listed token, ssh://git@ and git@host: - and every other remote
+compares exactly. This repository
 now reads ALIVE with every criterion verified.
 
 The original brief follows.
@@ -310,7 +311,7 @@ have to display.
 ## Verifying you have not broken anything
 
 ```bash
-bundle exec rake                                  # 288 examples (1 pending off Linux), StandardRB
+bundle exec rake                                  # 297 examples (1 pending off Linux), StandardRB
 bundle exec exe/reanimator baseline . --execute    # ALIVE — 100% (3/3 required; 9 criteria verified)
 bundle exec exe/reanimator contract .              # posture, criteria, protected paths
 bundle exec exe/reanimator drift .                 # obligations, or drift if recorded
