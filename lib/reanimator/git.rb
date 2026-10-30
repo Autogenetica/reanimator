@@ -22,6 +22,52 @@ module Reanimator
       capture(root, "config", "--get", "remote.origin.url")
     end
 
+    # Forges whose repositories are named owner/repo (GitLab adds subgroups),
+    # case-insensitively, with or without .git. Only these are normalised.
+    FORGES = %w[github.com gitlab.com bitbucket.org].freeze
+    FORGE_HOST = FORGES.map { |host| Regexp.escape(host) }.join("|")
+    # What URL userinfo may hold, as an allow-list: RFC 3986 unreserved
+    # characters, sub-delims and percent-escapes. Nothing that ends or
+    # redirects the authority - [ ] ? # / @ \ or whitespace - can appear, so
+    # git and curl reach the host this pattern reads.
+    USERINFO = %r{[\w.~%!$&'()*+,;=-]+}
+    # A path segment, never "." or "..", which transports resolve differently.
+    SEGMENT = %r{(?!\.{1,2}(?:/|\z))[\w.-]+}
+    # Only the forms the forges themselves hand out: https with an optional
+    # token on the default port, ssh://git@ on port 22, and git@host:path. Any
+    # other spelling - another user, another port, an unusual scheme - is
+    # compared exactly instead of guessed at.
+    FORGE_REMOTE = %r{\A(?:https://(?:#{USERINFO}(?::#{USERINFO})?@)?(?<host>#{FORGE_HOST})(?::443)?/|
+                       ssh://git@(?<host>#{FORGE_HOST})(?::22)?/|
+                       git@(?<host>#{FORGE_HOST}):)
+                     (?<path>#{SEGMENT}(?:/#{SEGMENT})+)/?\z}xi
+    # Prefix for remotes compared exactly; forge identities never contain "=".
+    EXACT = "="
+
+    # Which repository a remote URL names. On the known forges, the standard
+    # ways of reaching one repository - SSH or HTTPS, with or without a token,
+    # any case, with or without .git - share one identity. Every other remote
+    # is compared exactly, apart from surrounding whitespace: off the forges,
+    # users, ports, case, .git and path anchoring can each name a different
+    # repository, and guessing wrong would report "no drift" against another
+    # repository's snapshot. The cost is that a self-hosted forge, or an
+    # unusual spelling of a forge remote, checked over a different transport
+    # is refused - the safe direction.
+    #
+    # @param url [String, nil]
+    # @return [String, nil] e.g. "github.com/org/repo", or "=git@host:/srv/repo"
+    def remote_identity(url)
+      return if url.nil?
+
+      text = url.strip
+      # Case-insensitive matching folds some non-ASCII letters (a Kelvin sign
+      # for K), so only an ASCII remote is a candidate for normalising.
+      forge = text.ascii_only? && FORGE_REMOTE.match(text)
+      return "#{EXACT}#{text}" unless forge
+
+      "#{forge[:host].downcase}/#{forge[:path].delete_suffix(".git").downcase}"
+    end
+
     # @return [Boolean] whether an "upstream" remote is configured, a strong
     #   local hint that the repository is a maintained fork
     def upstream_remote?(root)

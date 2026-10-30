@@ -1,0 +1,22 @@
+# Dependency review for this repository: weekly, grouped so a week's updates
+# arrive as one pull request per ecosystem rather than one per gem.
+version: 2
+updates:
+  - package-ecosystem: bundler
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      bundler:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    # Pinned together with its scanner version input in main.yml; bumping
+    # only the action SHA would let the two drift apart.
+    ignore:
+      - dependency-name: trufflesecurity/trufflehog

@@ -176,6 +176,12 @@ module Reanimator
       waivers.find { |waiver| waiver[:target] == target }&.[](:expires)
     end
 
+    # The repository the recorded origin names (Git.remote_identity): one
+    # identity across the standard SSH and HTTPS forms on github.com, gitlab.com
+    # and bitbucket.org, and the exact remote everywhere else. Nil without an
+    # origin.
+    def origin_identity = Git.remote_identity(origin)
+
     def to_h
       {
         repository: repository, origin: origin,

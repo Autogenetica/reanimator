@@ -1,0 +1,88 @@
+{
+  "repository": "Autogenetica/reanimator",
+  "origin": "git@github.com:Autogenetica/reanimator.git",
+  "taken_at": "2026-10-28T18:28:42-04:00",
+  "intent": "maintain",
+  "profile": "ruby-cli",
+  "security_posture": "balanced",
+  "autonomy": {
+    "observe": "automatic",
+    "diagnose": "automatic",
+    "repair": "disabled",
+    "submit": "disabled",
+    "merge": "disabled"
+  },
+  "protected_paths": [
+    ".reanimator.yml",
+    ".github/workflows/**",
+    ".github/dependabot.yml",
+    "CODEOWNERS",
+    ".github/CODEOWNERS"
+  ],
+  "criteria": [
+    {
+      "id": "dependencies",
+      "evaluator": "command",
+      "run": "bundle check",
+      "required": true
+    },
+    {
+      "id": "tests",
+      "evaluator": "command",
+      "run": "bundle exec rspec",
+      "required": true
+    },
+    {
+      "id": "lint",
+      "evaluator": "command",
+      "run": "bundle exec standardrb",
+      "required": false
+    },
+    {
+      "id": "build",
+      "evaluator": "command",
+      "run": "gem build reanimator.gemspec",
+      "required": true
+    },
+    {
+      "id": "support_matrix",
+      "evaluator": "support_matrix",
+      "run": null,
+      "required": false
+    },
+    {
+      "id": "executable",
+      "evaluator": "command",
+      "run": "bundle exec exe/reanimator --help",
+      "required": false
+    },
+    {
+      "id": "security-dependency-review",
+      "evaluator": "security_evidence",
+      "run": null,
+      "required": false
+    },
+    {
+      "id": "security-secret-scanning",
+      "evaluator": "security_evidence",
+      "run": null,
+      "required": false
+    },
+    {
+      "id": "security-policy",
+      "evaluator": "security_evidence",
+      "run": null,
+      "required": false
+    }
+  ],
+  "waivers": [],
+  "support_matrix": [
+    "3.3",
+    "3.4"
+  ],
+  "security_controls": [
+    "dependabot",
+    "security_policy",
+    "security_secret_scanning_trufflehog"
+  ]
+}

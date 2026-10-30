@@ -175,6 +175,18 @@ RSpec.describe Reanimator::DriftDetector do
     expect(report.benign_changes.size).to eq(3)
   end
 
+  it "treats a command that disappears as lost proof, not a rename" do
+    criteria = ->(run) { [{id: :exe, evaluator: :command, run: run, required: false}] }
+
+    lost = described_class.between(snapshot(criteria: criteria.call("bin/x --help")), snapshot(criteria: criteria.call(nil)))
+    emptied = described_class.between(snapshot(criteria: criteria.call("bin/x --help")), snapshot(criteria: criteria.call("")))
+    gained = described_class.between(snapshot(criteria: criteria.call(nil)), snapshot(criteria: criteria.call("bin/x --help")))
+
+    expect(lost.policy_changes.map(&:verdict)).to eq([described_class::LOST_COMMAND])
+    expect(emptied.policy_changes.map(&:verdict)).to eq([described_class::LOST_COMMAND])
+    expect(gained.benign_changes.map(&:verdict)).to eq([described_class::GAINED_COMMAND])
+  end
+
   it "refuses to compare two different repositories" do
     expect { described_class.between(snapshot, snapshot(repository: "codenamev/other")) }
       .to raise_error(Reanimator::ContractError, /only meaningful within one repository/)
@@ -184,12 +196,21 @@ RSpec.describe Reanimator::DriftDetector do
   # alone answered "no drift" - the most dangerous possible answer, since it
   # reports a repository unchanged that was never recorded. A git origin names
   # a repository exactly, so it decides whenever both snapshots carry one.
+  it "recognises one repository whether it was cloned over SSH or HTTPS" do
+    recorded = snapshot(origin: "git@github.com:Autogenetica/reanimator.git")
+    current = snapshot(origin: "https://github.com/Autogenetica/reanimator")
+
+    expect { described_class.between(recorded, current) }.not_to raise_error
+  end
+
   it "refuses two repositories that share a name but not an origin" do
     recorded = snapshot(origin: "git@github.com:codenamev/widget.git")
     current = snapshot(origin: "git@github.com:someone-else/widget.git")
 
     expect { described_class.between(recorded, current) }
-      .to raise_error(Reanimator::ContractError, /only meaningful within one repository/)
+      .to raise_error(Reanimator::ContractError,
+        "Snapshot is for git@github.com:codenamev/widget.git, not git@github.com:someone-else/widget.git; " \
+        "drift is only meaningful within one repository.")
   end
 
   it "compares by origin even when the recorded names differ" do
