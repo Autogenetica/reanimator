@@ -91,6 +91,7 @@ module Reanimator
 
       RENAMED_COMMAND
     end
+    private_class_method :command_change
 
     # How a waiver with no expiry reads in a report.
     OPEN_ENDED = "open-ended"
@@ -123,11 +124,12 @@ module Reanimator
     # Comparing two different repositories' snapshots would produce a report
     # that reads plausibly and means nothing, and the dangerous direction is
     # "no drift" - quietly reporting a repository unchanged that was never
-    # recorded. A git origin names a repository exactly, so it decides whenever
-    # both snapshots carry one - compared by the repository it names, since the
-    # same repository is cloned over SSH on a laptop and HTTPS in CI. Without an
-    # origin the recorded names are the only evidence there is, and two
-    # same-named local checkouts are indistinguishable.
+    # recorded. A git origin names a repository, so it decides whenever both
+    # snapshots carry one - compared by Git.remote_identity, which matches the
+    # standard SSH and HTTPS forms on the known forges (a laptop's SSH clone and
+    # CI's HTTPS checkout) and requires every other remote to match exactly.
+    # Without an origin the recorded names are the only evidence there is, and
+    # two same-named local checkouts are indistinguishable.
     def ensure_same_repository
       recorded, current = identities
       return if recorded.nil? || current.nil? || recorded == current

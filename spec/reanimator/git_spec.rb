@@ -34,15 +34,40 @@ RSpec.describe Reanimator::Git do
     end
 
     it "does not take another host for a forge" do
-      expect(identity("evil.example:x@github.com:org/widget.git")).not_to eq(identity("git@github.com:org/widget.git"))
-      expect(identity("git@github.com.evil.example:org/widget.git")).not_to eq(identity("git@github.com:org/widget.git"))
-      expect(identity("https://github.com.evil.example/org/widget")).not_to eq(identity("https://github.com/org/widget"))
+      github = identity("git@github.com:org/repo.git")
+      [
+        "evil.example:x@github.com:org/repo.git",
+        "git@github.com.evil.example:org/repo.git",
+        "https://github.com.evil.example/org/repo",
+        "[evil.example]x@github.com:org/repo",
+        "[evil.example]@github.com:org/repo",
+        "ssh://[evil.example]@github.com/org/repo",
+        "ssh://[evil.example:2222]@github.com/org/repo",
+        'https://evil.example#@github.com/org/repo',
+        "https://evil.example?@github.com/org/repo",
+        "http://localhost:8000?@github.com/org/repo",
+        "ssh://git@github.com:2222/org/repo",
+        "https://github.com:8443/org/repo"
+      ].each { |remote| expect(identity(remote)).not_to eq(github), remote }
+    end
+
+    it "accepts only allow-listed characters in userinfo, so nothing can redirect the host" do
+      ["[", "]", "?", "#", "\\", " ", "/", "@"].each do |char|
+        expect(identity("https://evil#{char}x@github.com/org/repo")).to start_with("="), char.inspect
+      end
+      expect(identity("https://x-access-token:ghs_abc123@github.com/org/repo")).to eq("github.com/org/repo") # trufflehog:ignore - fake credential fixture
+    end
+
+    it "never folds . or .. path segments, which transports resolve differently" do
+      expect(identity("https://github.com/octocat/x/../Hello-World")).to start_with("=")
+      expect(identity("https://github.com/org/.github")).to eq("github.com/org/.github")
     end
   end
 
   describe ".remote_identity everywhere else" do
-    it "compares the remote exactly, apart from whitespace and a trailing slash" do
-      expect(identity(" git@gitserver:/srv/widget/ ")).to eq("=git@gitserver:/srv/widget")
+    it "compares the remote exactly, apart from surrounding whitespace" do
+      expect(identity(" git@gitserver:/srv/widget ")).to eq("=git@gitserver:/srv/widget")
+      expect(identity("gitserver:/")).not_to eq(identity("gitserver:"))
     end
 
     it "keeps every part that can name a different repository off the forges" do
