@@ -65,7 +65,7 @@ module Reanimator
 
       # A job switched off with a literal `if: false` (or `${{ false }}`) never
       # runs, so its matrix is not evidence.
-      def disabled?(job) = [false, "false", "${{ false }}"].include?(job["if"].is_a?(String) ? job["if"].strip : job["if"])
+      def disabled?(job) = [false, "false", "${{false}}"].include?(job["if"].is_a?(String) ? job["if"].delete(" \t") : job["if"])
 
       # Workflows Reanimator could not read, and why, so a missing matrix is
       # reported as its gap rather than as untested support.

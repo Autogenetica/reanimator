@@ -47,12 +47,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   A workflow Reanimator cannot read (YAML aliases, which it refuses to expand,
   or invalid YAML) is named in the result but never softens it: the readable
   workflows decide, so a narrowing they prove still blocks, and an aliased
-  workflow's Rubies are simply not counted. The declared floor comes only from
-  real `required_ruby_version` assignments (not comments, `=begin` blocks or
-  descriptions), the lowest when there are several. A floor assigned from
-  anything but string literals — a constant, `%q()`, interpolation, a heredoc,
-  a lookup — is reported as missing evidence asking for a literal, never read
-  as "no floor"; of 161 installed gems that assign a floor, one is affected.
+  workflow's Rubies are simply not counted. The declared floor is read from
+  every root gemspec, the lowest winning. Every line that mentions
+  `required_ruby_version` (outside comments and `=begin` blocks) must be a
+  complete assignment of string literals; anything else — a constant, `%q()`,
+  interpolation, a heredoc, a lookup, a value on the next line, `send`, `||=` —
+  makes the floor unreadable, reported as missing evidence asking for a
+  literal, never read as "no floor". Of 209 installed gems with a gemspec, two
+  are affected. A floor set outside any `.gemspec` file is not seen.
   Exclude keys and values match loosely (case aside, `7.0` as `7`), a job with
   `if: false` is not credited, and — as before — a workflow that only runs on
   manual dispatch is still read. Gemspec requirements written as arrays — on one

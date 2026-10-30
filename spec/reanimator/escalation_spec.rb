@@ -120,6 +120,13 @@ RSpec.describe "escalation delivery" do
       expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow)).status).to eq(:missing_evidence)
     end
 
+    it "matches exclude values loosely on the by-value path too" do
+      many = (1..40).map { |i| "v#{i}" }.join(", ")
+      workflow = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.0\", \"3.4\"]\n        a: [#{many}]\n        b: [#{many}]\n" \
+        "        exclude:\n          - ruby: 3.0\n            a: v1\n"
+      expect(support_result(gem_with(requirement: "'>= 3.0'", workflow: workflow)).status).to eq(:missing_evidence)
+    end
+
     it "reads only strings and numbers as Rubies, and refuses YAML aliases outright" do
       odd = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [{a: 1}, true, null, \"3.4\"]\n"
       bomb = "a: &a [\"x\", \"x\"]\nb: &b [*a, *a]\njobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [*b, \"3.1\"]\n"
@@ -219,7 +226,7 @@ RSpec.describe "escalation delivery" do
     end
 
     it "does not credit a job switched off with if: false, in any spelling" do
-      ["false", "\"false\"", "${{ false }}"].each do |condition|
+      ["false", "\"false\"", "${{ false }}", "${{false}}"].each do |condition|
         workflow = "jobs:\n  test:\n    strategy:\n      matrix:\n        ruby: [\"3.4\"]\n" \
           "  legacy:\n    if: #{condition}\n    strategy:\n      matrix:\n        ruby: [\"3.1\"]\n"
         expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow)).status).to eq(:missing_evidence), condition
@@ -277,6 +284,46 @@ RSpec.describe "escalation delivery" do
         expect(Reanimator.discover(make_repo(files: narrowed_support.merge("widget.gemspec" => gemspec))).value(:supported_ruby))
           .to be_nil, shape
       end
+    end
+
+    it "treats any mention it cannot read as a literal assignment as an unreadable floor" do
+      {
+        "value on the next line" => "  s.required_ruby_version =\n    \">= 3.1\"\n",
+        "requirement over lines" => "  s.required_ruby_version = Gem::Requirement.new(\n    \">= 3.1\"\n  )\n",
+        "send" => "  s.send(:required_ruby_version=, \">= 3.1\")\n",
+        "instance variable" => "  @spec.required_ruby_version = \">= 3.1\"\n",
+        "or-assign" => "  s.required_ruby_version ||= \">= 3.1\"\n",
+        "leading-dot chain" => "  s\n    .required_ruby_version = \">= 3.1\"\n",
+        "comparison" => "  raise unless s.required_ruby_version == \">= 3.4\"\n  s.required_ruby_version = \">= 3.1\"\n",
+        "description" => "  s.description = \"needs required_ruby_version 3.4\"\n  s.required_ruby_version = \">= 3.1\"\n"
+      }.each do |shape, lines|
+        gemspec = "Gem::Specification.new do |s|\n#{lines}end\n"
+        files = gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge("widget.gemspec" => gemspec)
+        result = support_result(files)
+        expect(result.status).to eq(:missing_evidence), shape
+        expect(result.detail).to include("Write the floor as a string literal"), shape
+      end
+    end
+
+    it "reads a frozen literal, and a # inside a string is not a comment" do
+      gemspec = "Gem::Specification.new do |s|\n  s.required_ruby_version = [\">= 3.1\".freeze, \"!= 3.2.#0\"] # was 2.7\nend\n"
+      discovered = Reanimator.discover(make_repo(files: narrowed_support.merge("widget.gemspec" => gemspec)))
+      expect(discovered.value(:supported_ruby)).to eq([">= 3.1", "!= 3.2.#0"])
+    end
+
+    it "reads every gemspec, so a second one can neither hide nor raise the floor" do
+      floorless = "Gem::Specification.new { |s| s.name = \"w-cloud\" }\n"
+      higher = "Gem::Specification.new { |s| s.required_ruby_version = \">= 3.4\" }\n"
+      base = gem_with(requirement: "'>= 3.1'", matrix: %w[3.4])
+
+      expect(support_result(base.merge("a-cloud.gemspec" => floorless)).status).to eq(:missing_evidence)
+      expect(support_result(base.merge("a-pro.gemspec" => higher)).status).to eq(:missing_evidence)
+    end
+
+    it "reports a requirement that does not parse rather than dropping it" do
+      result = support_result(gem_with(requirement: "'>= three'"))
+      expect(result.status).to eq(:missing_evidence)
+      expect(result.detail).to include("could not be parsed as a requirement")
     end
 
     it "reads a multi-line array even after another array on the same line" do

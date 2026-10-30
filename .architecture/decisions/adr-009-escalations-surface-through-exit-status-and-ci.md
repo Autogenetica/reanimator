@@ -74,9 +74,12 @@ tested only 3.3 and 3.4 read as verified.
   reverted: one unrelated aliased workflow silenced a required check.) Drift
   snapshots record the same matrix union the evaluator reads. Wherever a
   reading is ambiguous - several floor assignments, loosely equal exclude
-  values - the choice that can only under-credit is taken, and a floor that
-  is not written as literals is reported as unreadable rather than treated
-  as absent, since "no floor" would credit any matrix.
+  values - the choice that can only under-credit is taken. The floor reader
+  is strict in the same direction: every mention of `required_ruby_version`
+  in every root gemspec must parse as a literal assignment, or the floor is
+  reported as unreadable rather than treated as absent, since "no floor"
+  would credit any matrix. (Recognising assignment forms one by one was tried
+  for two rounds; each review found another form that fell through.)
   Known limitation: a workflow that only runs on manual dispatch is still
   read as CI, as before; a job with a literal `if: false` is not. Regex parsing
   was tried first; three reviews each found new false results, and two more
