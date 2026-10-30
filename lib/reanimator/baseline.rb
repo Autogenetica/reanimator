@@ -60,16 +60,20 @@ module Reanimator
       results.select { |r| r.required? && !r.verified? && !r.accepted_risk? }
     end
 
-    # Required criteria that need a human (section 16): failed, or unproven for
-    # a reason other than the run choosing not to execute. A `planned` command
-    # only means "not asked to run" - unless the run did ask and execution was
-    # withheld, which is a decision someone has to revisit. Missing evidence, a
-    # refused or unavailable check, or an evaluator that errored is something
-    # nobody has resolved.
+    # Statuses that leave a criterion unproven without asking anyone to act: a
+    # `planned` command was not asked to run, and a `skipped` one is beyond
+    # what Reanimator can establish today (a boot smoke, an evaluator it does
+    # not have). They keep the state Unproven; they do not fail a run.
+    NOT_ACTIONABLE = %i[planned skipped].freeze
+
+    # Required criteria that need a human (section 16): failed, missing
+    # evidence, or errored. Planned and skipped criteria join them only when
+    # the run asked to execute and execution was withheld - by configuration or
+    # an unenforceable network rule - which is a decision someone must revisit.
     def escalations
       return unresolved_required if execution_withheld?
 
-      unresolved_required.reject { |r| r.status == :planned }
+      unresolved_required.reject { |r| NOT_ACTIONABLE.include?(r.status) }
     end
 
     def needs_attention? = escalations.any?

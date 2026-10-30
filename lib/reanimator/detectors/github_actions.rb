@@ -23,6 +23,10 @@ module Reanimator
       # (ruby:\n  - "3.3"\n  - "3.4").
       RUBY_MATRIX = /ruby(?:-version)?\s*:\s*\[([^\]]+)\]/
       RUBY_MATRIX_BLOCK = /ruby(?:-version)?\s*:[ \t]*\n((?:[ \t]*-[ \t]*[^\n]+\n?)+)/
+      # A single Ruby on one line - an include: entry or a setup-ruby input.
+      RUBY_SCALAR = /^[ \t-]*ruby(?:-version)?\s*:\s*["']?([^"'\s\[\]{}$]+)["']?\s*$/
+      # What a Ruby entry can be: a version, or a named interpreter build.
+      RUBY_ENTRY = /\A(?:\d+(?:\.\d+)*|head|debug|(?:jruby|truffleruby|ruby)(?:-[\w.]+)?)\z/
 
       def detect
         workflows = repository.glob(".github/workflows/*.yml") + repository.glob(".github/workflows/*.yaml")
@@ -57,10 +61,16 @@ module Reanimator
         end
       end
 
+      # Commented-out lines are not run - commenting a version out is how one
+      # is usually dropped - and an entry must look like a Ruby, so a list of
+      # steps after an empty key is not read as versions.
       def matrix_versions(body)
-        inline = body.scan(RUBY_MATRIX).flat_map { |(list)| list.split(",") }
-        block = body.scan(RUBY_MATRIX_BLOCK).flat_map { |(list)| list.lines.map { |line| line.sub(/\A\s*-\s*/, "") } }
-        (inline + block).map { |v| v.strip.delete("\"'") }.reject(&:empty?).uniq
+        live = body.lines(chomp: true).reject { |line| line.lstrip.start_with?("#") }
+          .map { |line| line.sub(/\s+#.*$/, "") }.join("\n")
+        inline = live.scan(RUBY_MATRIX).flat_map { |(list)| list.split(",") }
+        block = live.scan(RUBY_MATRIX_BLOCK).flat_map { |(list)| list.lines.map { |line| line.sub(/\A\s*-\s*/, "") } }
+        scalar = live.scan(RUBY_SCALAR).flatten
+        (inline + block + scalar).map { |v| v.strip.delete("\"'") }.select { |v| RUBY_ENTRY.match?(v) }.uniq
       end
 
       def security_facts(workflows)

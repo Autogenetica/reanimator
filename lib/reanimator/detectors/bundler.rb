@@ -50,9 +50,22 @@ module Reanimator
       # [">= 3.1", "< 4"] and Gem::Requirement.new(">= 3.1") are read as the
       # requirements they are; an unquoted value is taken as written.
       def gemspec_requirements(body, match)
-        line = body.lines.find { |l| l.include?("required_ruby_version") }.to_s
-        quoted = line[/required_ruby_version.*/].to_s.scan(/["']([^"']+)["']/).flatten
+        quoted = requirement_text(body).scan(/["']([^"']+)["']/).flatten
         quoted.empty? ? [match[1].strip] : quoted.map(&:strip)
+      end
+
+      # The required_ruby_version expression, without trailing comments, and
+      # through the closing bracket when an array spans several lines.
+      def requirement_text(body)
+        lines = body.lines.drop_while { |l| !l.include?("required_ruby_version") }
+        return "" if lines.empty?
+
+        text = lines.first[/required_ruby_version.*/m]
+        if text.include?("[") && !text.include?("]")
+          rest = lines.drop(1)
+          text += rest[0..(rest.index { |l| l.include?("]") } || -1)].join
+        end
+        text.lines.map { |l| l.sub(/\s+#.*$/, "") }.join
       end
 
       # @return [Array<Pin>] de-duplicated runtime pins, strongest source first

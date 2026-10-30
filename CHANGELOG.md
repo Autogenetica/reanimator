@@ -35,11 +35,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - **`SupportMatrix` catches narrowed support.** It credited any CI Ruby matrix;
-  it now compares the declared floor with CI's lowest released Ruby across every
-  workflow, and a matrix that rose above the floor, or exercises no released
-  Ruby, is missing evidence. Discovery now reads every matrix in a workflow
-  (including YAML block lists) and gemspec requirements written as arrays or
-  `Gem::Requirement.new(...)`; `>= 0` sets no floor.
+  it now compares the declared floor with CI's lowest pinned release across
+  every workflow, and a matrix that rose above the floor, or pins no specific
+  release, is missing evidence. Discovery reads every matrix in a workflow
+  (inline, YAML block lists, `include:` entries and setup-ruby versions), skips
+  commented-out entries, and reads gemspec requirements written as arrays — on
+  one line or several — or `Gem::Requirement.new(...)`; `>= 0` sets no floor.
+- **Drift snapshots record every workflow's Ruby matrix,** not just the first,
+  so drift and the baseline agree. Re-recording a snapshot may show a wider
+  matrix than before; that is reported as benign.
+- **A web application's boot smoke is `skipped`, not missing evidence.**
+  Reanimator does not provision a running service yet; the gap is its own, so
+  the repository stays Unproven without being asked to act on it.
 - **A repair with nothing to fix but something unproven escalates** instead of
   reporting a healthy no-op.
 

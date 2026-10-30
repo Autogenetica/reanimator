@@ -8,8 +8,6 @@ module Reanimator
     # blocking findings are errors, matching the exit status; advisory ones are
     # notices, which GitHub caps separately and shows with less weight.
     class Annotations
-      LEVELS = {error: "error", notice: "notice"}.freeze
-
       # @param findings [Array<Finding>]
       def initialize(findings)
         @findings = findings
@@ -18,7 +16,7 @@ module Reanimator
       # @return [Array<String>]
       def render
         @findings.map do |finding|
-          "::#{LEVELS.fetch(finding.level)} title=#{escape_property("Reanimator: #{finding.title}")}::" \
+          "::#{finding.level} title=#{escape_property("Reanimator: #{finding.title}")}::" \
             "#{escape_data(finding.message)}"
         end
       end

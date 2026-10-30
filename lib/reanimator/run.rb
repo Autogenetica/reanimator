@@ -39,7 +39,7 @@ module Reanimator
     # Outcomes a human must act on (section 16): a repair that did not verify,
     # an escalation, a safe stop, or a verified draft waiting to be submitted.
     # Only a healthy no-op needs nobody.
-    def needs_attention? = %i[report escalation safe_stop draft_pr].include?(outcome)
+    def needs_attention? = outcome != :no_op
 
     # A draft PR needs a human too: a verified change exists only as this run's
     # output until someone submits or reviews it.

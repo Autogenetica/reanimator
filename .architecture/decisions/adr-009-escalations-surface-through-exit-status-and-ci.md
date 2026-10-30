@@ -28,9 +28,13 @@ tested only 3.3 and 3.4 read as verified.
 - **What needs a human is defined once, on the subjects themselves,** as
   `Finding`s (level, title, message). Annotations and summaries consume
   findings and never ask which kind of subject produced them.
-  - `Baseline#escalations`: required criteria that failed or are unproven.
-    `planned` is excluded only when the run did not ask to execute; when it
-    asked and execution was withheld, planned checks escalate too.
+  - `Baseline#escalations`: required criteria that failed, lack evidence, or
+    errored. `planned` (not asked to run) and `skipped` (beyond what
+    Reanimator can establish today, such as a boot smoke it does not provision)
+    keep the state Unproven but do not fail the run - unless the run asked to
+    execute and execution was withheld, when they escalate too. Without that,
+    every Rails application would exit 2 forever on its unprovable `boot`
+    criterion.
   - `Run#needs_attention?`: every outcome except a healthy no-op. A draft PR
     counts: a verified change that exists only as output needs someone to
     submit or review it. A repair that finds nothing failed while something is
@@ -40,16 +44,19 @@ tested only 3.3 and 3.4 read as verified.
   `::notice` annotations, which GitHub caps separately from errors and warnings;
   blocking findings become `::error`. A repository that wants a criterion to
   block declares it required in `.reanimator.yml`.
-- **Repository text cannot drive the CI surface.** Reports quote claims,
-  details and reasons the repository controls, so inside Actions they are
-  printed between `::stop-commands::` markers with a fresh random token, and
-  the job summary's fence is longer than any backtick run it contains.
-  `--format json` prints pure JSON - JSON escapes newlines, so no line can start
-  a command - and skips annotations. A summary that cannot be written is
-  reported, not raised.
-- **`SupportMatrix` compares the declared floor with CI's lowest released
-  Ruby across every workflow,** per minor release. A matrix above the floor,
-  or one exercising no released Ruby, is `missing_evidence`.
+- **Repository text cannot drive the CI surface.** Every command's report - and
+  every stderr message, since the runner reads commands there too - is printed
+  between `::stop-commands::` markers with a fresh random token inside Actions,
+  and the job summary's fence is longer than any backtick run it contains.
+  Machine output (`--format json`, the contract's YAML) is printed untouched and
+  skips annotations. A summary that cannot be written is reported, not raised.
+  The summary report is chosen by the command, which knows its subject.
+- **`SupportMatrix` compares the declared floor with CI's lowest pinned
+  release across every workflow,** per minor release. A matrix above the floor,
+  or one pinning no specific release, is `missing_evidence`. Commented-out
+  entries do not count, `include:` entries and setup-ruby versions do, a bare
+  major such as `"3"` proves no minor, and drift snapshots record the same
+  union of matrices the evaluator reads, so the two cannot disagree.
 
 ## Alternatives considered
 

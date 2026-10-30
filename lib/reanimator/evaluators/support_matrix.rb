@@ -36,7 +36,7 @@ module Reanimator
         lowest = lowest_release(ci_versions)
         if floor && lowest.nil?
           return result(:missing_evidence,
-            detail: "Ruby #{floor} is declared supported, but CI exercises no released Ruby (#{ci_versions.join(", ")}).")
+            detail: "Ruby #{floor} is declared supported, but CI pins no specific released Ruby (#{ci_versions.join(", ")}).")
         end
         if floor && minor(lowest) > minor(floor)
           return result(:missing_evidence,
@@ -59,10 +59,11 @@ module Reanimator
         floors.select { |version| version >= NO_FLOOR }.min
       end
 
-      # The lowest released version in the CI matrix, ignoring entries such as
-      # "head" or "truffleruby" that are not plain versions.
+      # The lowest released version the CI matrix pins, ignoring entries such as
+      # "head" or "truffleruby", and bare majors: setup-ruby reads "3" as the
+      # latest 3.x, which proves no particular minor release.
       def lowest_release(versions)
-        versions.select { |v| Gem::Version.correct?(v) }.map { |v| Gem::Version.new(v) }.min
+        versions.select { |v| Gem::Version.correct?(v) && v.include?(".") }.map { |v| Gem::Version.new(v) }.min
       end
 
       # Support is claimed per minor release, so compare major.minor only.

@@ -87,7 +87,10 @@ module Reanimator
     def self.discovered_matrix(discovery)
       return [] unless discovery
 
-      Array(discovery.value(:ci_ruby_matrix) || discovery.value(:supported_ruby)).map(&:to_s)
+      # Every workflow's matrix, as SupportMatrix reads it, so drift and the
+      # baseline agree on what CI exercises.
+      ci = discovery.all(:ci_ruby_matrix).flat_map { |fact| Array(fact.value) }.uniq
+      Array(ci.empty? ? discovery.value(:supported_ruby) : ci).map(&:to_s)
     end
     private_class_method :discovered_matrix
 

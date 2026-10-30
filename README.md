@@ -149,7 +149,7 @@ when a human is actually needed:
 | --- | --- |
 | 0 | Nothing needs a human. |
 | 1 | Reanimator could not do its job (bad input, an unreadable path or contract), or `drift` needs review. |
-| 2 | A human is needed: a required criterion failed or is unproven (including checks that were asked to execute and could not), or a `repair` produced anything but a healthy no-op — a verified draft waiting for a human counts. |
+| 2 | A human is needed: a required criterion failed, lacks evidence or errored (checks asked to execute that could not run count too), or a `repair` produced anything but a healthy no-op — a verified draft waiting for a human counts. Criteria Reanimator cannot establish yet, such as a web app's boot smoke, keep the state Unproven without failing the run. |
 
 Inside GitHub Actions the same findings also surface without anyone opening the
 log: each blocking finding becomes an `::error` annotation, each advisory

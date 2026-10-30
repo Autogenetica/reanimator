@@ -63,6 +63,47 @@ RSpec.describe "escalation delivery" do
       end
     end
 
+    it "reads an exact = requirement as a floor" do
+      expect(support_result(gem_with(requirement: "'= 3.1.0'")).status).to eq(:missing_evidence)
+    end
+
+    it "does not count commented-out matrix entries as tested" do
+      workflow = "# ruby: [\"3.1\"]\njobs:\n  t:\n    strategy:\n      matrix:\n        # ruby: [\"3.1\", \"3.2\"]\n        ruby: [\"3.3\", \"3.4\"] # 3.1 dropped\n"
+      expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: workflow)).status).to eq(:missing_evidence)
+    end
+
+    it "does not read a bare major as its oldest minor" do
+      expect(support_result(gem_with(requirement: "'>= 3.1'", matrix: %w[3 head])).status).to eq(:missing_evidence)
+    end
+
+    it "credits include: entries and setup-ruby versions, but not steps after an empty key" do
+      include_entry = "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.3\"]\n        include:\n          - ruby: \"3.1\"\n"
+      steps = "jobs:\n  t:\n    steps:\n      - uses: ruby/setup-ruby@v1\n        with:\n          ruby-version:\n      - run: bundle exec rake\n"
+
+      expect(support_result(gem_with(requirement: "'>= 3.1'", workflow: include_entry))).to be_verified
+      expect(Reanimator.discover(make_repo(files: gem_with(requirement: "'>= 3.1'", workflow: steps))).all(:ci_ruby_matrix)).to be_empty
+    end
+
+    it "ignores a trailing comment and reads an array spread over lines" do
+      commented = "Gem::Specification.new { |s| s.required_ruby_version = '>= 3.3' # we dropped \"3.1\"\n}\n"
+      multiline = "Gem::Specification.new do |s|\n  s.required_ruby_version = [\n    \">= 3.1\",\n    \"< 4\"\n  ]\nend\n"
+
+      expect(support_result(NARROWED_SUPPORT.merge("widget.gemspec" => commented))).to be_verified
+      expect(support_result(NARROWED_SUPPORT.merge("widget.gemspec" => multiline)).status).to eq(:missing_evidence)
+    end
+
+    it "keeps an unquoted requirement as written" do
+      files = NARROWED_SUPPORT.merge("widget.gemspec" => "Gem::Specification.new { |s| s.required_ruby_version = RUBY_FLOOR }\n")
+      expect(Reanimator.discover(make_repo(files: files)).value(:supported_ruby)).to eq(["RUBY_FLOOR }"])
+    end
+
+    it "records every workflow's matrix in the drift snapshot, as the evaluator reads them" do
+      files = gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(
+        ".github/workflows/test.yml" => "jobs:\n  t:\n    strategy:\n      matrix:\n        ruby: [\"3.1\", \"3.4\"]\n"
+      )
+      expect(Reanimator.snapshot(make_repo(files: files)).support_matrix).to contain_exactly("3.1", "3.4")
+    end
+
     it "treats >= 0 as no floor at all" do
       expect(support_result(gem_with(requirement: "'>= 0'"))).to be_verified
     end
@@ -71,7 +112,7 @@ RSpec.describe "escalation delivery" do
       result = support_result(gem_with(requirement: "'>= 3.1'", matrix: %w[head jruby truffleruby]))
 
       expect(result.status).to eq(:missing_evidence)
-      expect(result.detail).to include("CI exercises no released Ruby")
+      expect(result.detail).to include("CI pins no specific released Ruby")
     end
   end
 
@@ -86,14 +127,25 @@ RSpec.describe "escalation delivery" do
         generated_at: Time.now, executed: executed, execution_requested: requested)
     end
 
-    it "escalates required problems but not checks that were merely planned" do
+    it "escalates required problems, but not checks that were planned or beyond Reanimator" do
       baseline = baseline_with(%i[failed missing_evidence skipped error planned verified], required: true)
 
-      expect(baseline.escalations.map(&:status)).to eq(%i[failed missing_evidence skipped error])
+      expect(baseline.escalations.map(&:status)).to eq(%i[failed missing_evidence error])
     end
 
-    it "escalates planned checks when execution was asked for and withheld" do
-      expect(baseline_with(%i[planned], required: true, requested: true)).to be_needs_attention
+    it "does not hold every Rails app at exit 2 for a boot smoke Reanimator cannot run" do
+      rails = Reanimator.baseline(make_repo(files: {
+        "Gemfile" => "gem 'rails'\n", "config/application.rb" => "class App < Rails::Application; end\n",
+        ".reanimator.yml" => "version: 1\nintent: maintain\nprofile: rails-app\n"
+      }))
+
+      expect(rails.result_for(:boot).status).to eq(:skipped)
+      expect(rails.state.to_sym).to eq(:unproven)
+      expect(rails.escalations.map { |r| r.criterion.id }).not_to include(:boot)
+    end
+
+    it "escalates planned and skipped checks when execution was asked for and withheld" do
+      expect(baseline_with(%i[planned skipped], required: true, requested: true).escalations.size).to eq(2)
     end
 
     it "notes advisory problems without letting them block" do
@@ -116,15 +168,28 @@ RSpec.describe "escalation delivery" do
     end
   end
 
+  describe Reanimator::Finding do
+    it "refuses a level GitHub would not understand" do
+      expect { Reanimator::Finding.new(:warn, "t", "m") }.to raise_error(Reanimator::UnknownError, /:warn/)
+    end
+
+    it "gives a waiting draft a message even without a reason" do
+      repository = Reanimator::Repository.at(make_repo(files: {"README.md" => "x"}))
+      run = Reanimator::Run.new(outcome: :draft_pr, repository: repository, policy_version: "g@1", trigger: "t")
+
+      expect(run.findings.map(&:message)).to eq([Reanimator::Run::DRAFT_WAITING])
+    end
+  end
+
   describe Reanimator::Reports::Annotations do
     it "renders blocking findings as errors and advisory ones as notices, escaped" do
       lines = described_class.new([
-        Reanimator::Finding.new(:error, "acme/widget tests", "100% broken,\nreally"),
+        Reanimator::Finding.new(:error, "acme/widget tests", "100% broken,\nreally\r::stop"),
         Reanimator::Finding.new(:notice, "acme/widget lint: style, again", "advisory")
       ]).render
 
       expect(lines).to eq([
-        "::error title=Reanimator%3A acme/widget tests::100%25 broken,%0Areally",
+        "::error title=Reanimator%3A acme/widget tests::100%25 broken,%0Areally%0D::stop",
         "::notice title=Reanimator%3A acme/widget lint%3A style%2C again::advisory"
       ])
     end
@@ -156,6 +221,11 @@ RSpec.describe "escalation delivery" do
       expect(summary).to include("### run 0", "### run 1", "````\n``` not a fence\n````")
     end
 
+    it "keeps a heading on one line" do
+      described_class.publish(annotations: [], summaries: [["repo\n::error::x", "body"]], env: env, out: StringIO.new)
+      expect(File.read(env["GITHUB_STEP_SUMMARY"])).to start_with("### repo ::error::x\n")
+    end
+
     it "reports an unwritable summary instead of raising" do
       err = StringIO.new
       described_class.publish(annotations: [], summaries: [["x", "y"]],
@@ -166,11 +236,14 @@ RSpec.describe "escalation delivery" do
   end
 
   describe "the CLI" do
+    # Clears the Actions variables unless an example sets them, so a run of
+    # this suite inside Actions never writes fixtures into the real summary.
     def run_cli(*args, env: {})
       out = StringIO.new
       err = StringIO.new
       status = 0
-      stub_const("ENV", ENV.to_h.merge(env))
+      previous = [$stdout, $stderr]
+      stub_const("ENV", ENV.to_h.merge("GITHUB_ACTIONS" => nil, "GITHUB_STEP_SUMMARY" => nil).merge(env))
       $stdout = out
       $stderr = err
       begin
@@ -178,8 +251,7 @@ RSpec.describe "escalation delivery" do
       rescue SystemExit => e
         status = e.status
       ensure
-        $stdout = STDOUT
-        $stderr = STDERR
+        $stdout, $stderr = previous
       end
       [status, out.string, err.string]
     end
@@ -228,6 +300,22 @@ RSpec.describe "escalation delivery" do
 
       expect(lines.index("::stop-commands::tok")).to be_between(opened, closed)
       expect(lines[(closed + 1)..].grep(/\A::error .*support_matrix::/).size).to eq(1)
+    end
+
+    it "guards every command that prints repository text, and its errors" do
+      contract = "version: 1\nintent: maintain\nprofile: generic\nacceptance:\n  checks:\n    - id: x\n      run: \"echo\\n::error::forged\"\n"
+      root = make_repo(files: {".reanimator.yml" => contract, ".reanimator-snapshot.json" => "{\n::error::from-snapshot"})
+
+      _status, output = run_cli("contract", root, env: actions)
+      lines = output.lines.map(&:chomp)
+      opened = lines.index { |l| l.match?(/\A::stop-commands::\h{32}\z/) }
+      closed = lines.index("::#{lines[opened].split("::").last}::")
+      expect(lines.index("::error::forged")).to be_between(opened, closed)
+
+      _status, output = run_cli("discover", root, env: actions)
+      expect(output.lines.first).to match(/\A::stop-commands::\h{32}$/)
+      _status, _output, errors = run_cli("drift", root, env: actions)
+      expect(errors.lines.first).to match(/\A::stop-commands::\h{32}$/)
     end
 
     it "exits 2 when execution was asked for and withheld" do
