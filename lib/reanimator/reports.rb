@@ -12,6 +12,7 @@ module Reanimator
       failed: "✗",
       missing_evidence: "•",
       skipped: "◦",
+      unavailable: "○",
       accepted_risk: "!",
       planned: "…",
       error: "✗"

@@ -9,7 +9,15 @@ module Reanimator
   # discover, contract (review), and baseline (measure). Nothing in this CLI
   # writes to a repository or connects an agent - it exists to make the
   # repository's definition of life visible, executable, and trustworthy.
+  #
+  # Exit status separates the tool from the repository: 1 means Reanimator
+  # itself could not do its job (or drift needs review); 2 means it did its job
+  # and a human is needed (section 16 escalation). Inside GitHub Actions the
+  # same escalations are also published as annotations and a job summary.
   class CLI < Thor
+    EXIT_ERROR = 1
+    EXIT_ATTENTION = 2
+
     def self.exit_on_failure? = true
 
     desc "version", "Print the Reanimator version"
@@ -27,13 +35,13 @@ module Reanimator
     def inventory(*paths)
       guard do
         paths = [Dir.pwd] if paths.empty?
-        puts Reports::Inventory.new(Reanimator.inventory(paths)).render
+        emit(Reports::Inventory.new(Reanimator.inventory(paths)).render)
       end
     end
 
     desc "discover [PATH]", "Show discovered facts and their provenance (read-only)"
     def discover(path = Dir.pwd)
-      guard { puts Reports::Discovery.new(Reanimator.discover(path)).render }
+      guard { emit(Reports::Discovery.new(Reanimator.discover(path)).render) }
     end
 
     desc "contract [PATH]", "Show or export the effective vitality contract"
@@ -43,9 +51,9 @@ module Reanimator
       guard do
         contract = Reanimator.contract(path, intent: options[:intent]&.to_sym)
         if options[:export]
-          puts ContractFile.dump(contract.to_minimal_hash)
+          emit(ContractFile.dump(contract.to_minimal_hash), machine: true)
         else
-          puts Reports::Contract.new(contract).render
+          emit(Reports::Contract.new(contract).render)
         end
       end
     end
@@ -56,6 +64,10 @@ module Reanimator
       proof-of-life state. Native checks (integrity, documentation, support
       matrix) always run; command and boot checks only plan unless --execute is
       given, and even then execution is bounded and never edits source.
+
+      Exits 2 when a required criterion needs a human - failed, or unproven for
+      any reason other than not being asked to execute. Inside GitHub Actions
+      each such criterion is annotated and the check is added to the job summary.
     DESC
     option :execute, type: :boolean, default: false, desc: "Actually run discovered checks (bounded, read-only)"
     option :intent, desc: "Override the inferred lifecycle intent"
@@ -63,7 +75,9 @@ module Reanimator
     def baseline(path = Dir.pwd)
       guard do
         baseline = Reanimator.baseline(path, execute: options[:execute], intent: options[:intent]&.to_sym)
-        puts render_baseline(baseline, options[:format])
+        json = options[:format] == "json"
+        emit(render_baseline(baseline, options[:format]), machine: json)
+        exit_for([baseline], summary: Reports::GitHubCheck, annotate: !json)
       end
     end
 
@@ -73,19 +87,22 @@ module Reanimator
     def portfolio(*paths)
       guard do
         paths = [Dir.pwd] if paths.empty?
+        unreadable = []
         baselines = paths.filter_map do |path|
           Reanimator.baseline(path, execute: options[:execute])
         rescue RepositoryError => e
-          warn "skipping #{path}: #{e.message}"
+          alert("skipping #{path}: #{e.message}")
+          unreadable << path
           nil
         end
-        puts Reports::PortfolioBaseline.new(baselines, name: options[:name]).render
+        emit(Reports::PortfolioBaseline.new(baselines, name: options[:name]).render)
+        exit_for(baselines, summary: Reports::GitHubCheck, bad_input: unreadable.any?)
       end
     end
 
     desc "agents", "List coding-agent providers and whether each is available"
     def agents
-      guard { puts Reports::Agents.new(Reanimator.adapters).render }
+      guard { emit(Reports::Agents.new(Reanimator.adapters).render) }
     end
 
     desc "commission", "Prove a coding agent is ready via a synthetic repair (no repository writes)"
@@ -99,8 +116,8 @@ module Reanimator
     def commission
       guard do
         report = Reanimator.commission(provider: options[:provider].to_sym)
-        puts Reports::Commissioning.new(report).render
-        exit 1 unless report.ready? || report.readiness == :unavailable
+        emit(Reports::Commissioning.new(report).render)
+        exit EXIT_ERROR unless report.ready? || report.readiness == :unavailable
       end
     end
 
@@ -118,7 +135,8 @@ module Reanimator
     def repair(path = Dir.pwd)
       guard do
         run = Reanimator.repair(path, provider: options[:provider].to_sym, task_class: options[:task_class].to_sym)
-        puts Reports::Run.new(run).render
+        emit(Reports::Run.new(run).render)
+        exit_for([run], summary: Reports::Run)
       end
     end
 
@@ -158,7 +176,7 @@ module Reanimator
     def permissions(path = Dir.pwd)
       guard do
         contract = Reanimator.contract(path, intent: options[:intent]&.to_sym)
-        puts Reports::Permissions.new(contract).render
+        emit(Reports::Permissions.new(contract).render)
       end
     end
 
@@ -171,7 +189,7 @@ module Reanimator
     def families(*paths)
       guard do
         paths = [Dir.pwd] if paths.empty?
-        puts Reports::Families.new(Reanimator.families(paths)).render
+        emit(Reports::Families.new(Reanimator.families(paths)).render)
       end
     end
 
@@ -190,14 +208,47 @@ module Reanimator
         paths = [Dir.pwd] if paths.empty?
         evaluated = Reanimator.family_gates(paths, family: options[:family], execute: options[:execute])
         if evaluated.empty?
-          puts "No repository families detected."
+          emit("No repository families detected.")
         else
-          puts evaluated.map { |family, results| Reports::FamilyGates.new(family, results).render }.join("\n\n")
+          emit(evaluated.map { |family, results| Reports::FamilyGates.new(family, results).render }.join("\n\n"))
         end
       end
     end
 
     private
+
+    # Prints command output. Machine output (JSON, YAML) goes out untouched:
+    # wrapping it would break it, and JSON escapes newlines so repository text
+    # cannot start a workflow command in it. Reports - which quote repository
+    # text - go through the Actions guard.
+    def emit(text, machine: false)
+      machine ? puts(text) : ActionsSurface.print_report(text)
+    end
+
+    # Prints a message to stderr through the same guard: the Actions runner
+    # reads workflow commands from stderr too, and messages can quote
+    # repository content (a parse error from a committed snapshot, say).
+    def alert(text)
+      ActionsSurface.print_report(text, out: $stderr)
+    end
+
+    # Publishes the subjects' findings to CI, then exits: EXIT_ERROR when some
+    # input could not be read at all ("we could not tell" is never a pass),
+    # EXIT_ATTENTION when a finding blocks, normally otherwise.
+    #
+    # @param subjects [Array<Baseline, Run>] anything that states #findings
+    # @param summary [Class] the report each subject contributes to the job summary
+    # @param annotate [Boolean] false when stdout carries machine output
+    # @param bad_input [Boolean] whether some requested input was unreadable
+    def exit_for(subjects, summary:, annotate: true, bad_input: false)
+      findings = subjects.flat_map(&:findings)
+      ActionsSurface.publish(
+        annotations: annotate ? Reports::Annotations.new(findings).render : [],
+        summaries: subjects.map { |s| ["Reanimator — #{s.repository.full_name}", summary.new(s).render] }
+      )
+      exit EXIT_ERROR if bad_input
+      exit EXIT_ATTENTION if findings.any?(&:blocking?)
+    end
 
     # Several paths: a triage list across the portfolio, not one verdict.
     def portfolio_drift(paths)
@@ -211,8 +262,9 @@ module Reanimator
       drift = Reanimator.portfolio_drift(
         paths, snapshots: options[:snapshots], record: options[:record], intent: options[:intent]&.to_sym
       )
-      puts((options[:format] == "json") ? JSON.pretty_generate(drift.to_h) : Reports::PortfolioDrift.new(drift).render)
-      exit 1 if drift.requires_review?
+      json = options[:format] == "json"
+      emit(json ? JSON.pretty_generate(drift.to_h) : Reports::PortfolioDrift.new(drift).render, machine: json)
+      exit EXIT_ERROR if drift.requires_review?
     end
 
     def single_drift(path)
@@ -223,8 +275,8 @@ module Reanimator
       report = previous && DriftDetector.between(previous, snapshot)
 
       recorded_to = record_snapshot(snapshot, repository, store)
-      puts render_drift(report, snapshot, recorded_to, store)
-      exit 1 if report&.requires_review?
+      emit(render_drift(report, snapshot, recorded_to, store), machine: options[:format] == "json")
+      exit EXIT_ERROR if report&.requires_review?
     end
 
     # A snapshot is written only where the maintainer asked for it: --save names
@@ -235,7 +287,7 @@ module Reanimator
       return unless options[:save] || options[:record]
 
       written = options[:save] ? save_snapshot(snapshot, options[:save]) : store.save(snapshot, repository)
-      warn "Recorded contract snapshot for #{snapshot.repository} → #{written}"
+      alert("Recorded contract snapshot for #{snapshot.repository} → #{written}")
       written
     end
 
@@ -266,8 +318,8 @@ module Reanimator
     def guard
       yield
     rescue Reanimator::Error => e
-      warn "reanimator: #{e.message}"
-      exit 1
+      alert("reanimator: #{e.message}")
+      exit EXIT_ERROR
     end
   end
 end

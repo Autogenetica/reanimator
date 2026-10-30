@@ -16,9 +16,30 @@ RSpec.describe "reports" do
       expect(out).to include("No source changes were made")
     end
 
-    it "flags attention when required checks are unproven" do
+    it "says when the only gap is proof Reanimator cannot establish yet" do
+      contract = Reanimator.contract(make_repo(files: {"README.md" => "x"}))
+      criterion = Reanimator::AcceptanceCriterion.new(id: :boot, claim: "Boots.", evaluator: :http_smoke)
+      executed = Reanimator::Baseline.new(contract: contract, generated_at: Time.now, executed: true,
+        results: [Reanimator::CriterionResult.new(criterion: criterion, status: :unavailable)],
+        state: Reanimator::RepositoryState.fetch(:unproven))
+
+      out = described_class.new(executed).render
+      expect(out).to include("need proof Reanimator cannot establish yet")
+      expect(out).not_to include("run with --execute")
+    end
+
+    it "names both planned and unavailable checks when a run has each" do
+      rails = Reanimator.baseline(make_repo(files: {
+        "Gemfile" => "gem 'rails'\n", "config/application.rb" => "class App < Rails::Application; end\n",
+        ".reanimator.yml" => "version: 1\nintent: maintain\nprofile: rails-app\n"
+      }))
+      expect(described_class.new(rails).render).to include("were planned, not run", "1 need proof Reanimator cannot establish yet")
+    end
+
+    it "says planned checks are not yet proven without claiming anyone is needed" do
       out = described_class.new(baseline({"Gemfile" => "gemspec\n", "widget.gemspec" => "x"})).render
-      expect(out).to include("Attention needed")
+      expect(out).to include("Not proven yet")
+      expect(out).not_to include("Attention needed")
     end
   end
 

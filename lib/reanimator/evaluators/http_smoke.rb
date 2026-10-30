@@ -3,16 +3,19 @@
 module Reanimator
   module Evaluators
     # A boot smoke test against a health endpoint. Actually booting a service
-    # requires a running environment the read-only baseline deliberately does
-    # not provision, so this evaluator records the gap honestly - the criterion
-    # is a real, valuable proof-of-life check, it is simply not yet established.
-    # This is exactly the "production boot proof not established" gap Appendix A
-    # reports as Unproven rather than green.
+    # requires a running environment Reanimator does not provision yet, so this
+    # evaluator records the gap honestly - the criterion is a real, valuable
+    # proof-of-life check that is simply not established, which keeps the
+    # repository Unproven rather than green (Appendix A's "production boot
+    # proof not established").
+    #
+    # It is *unavailable*, not missing evidence: the gap is Reanimator's, not
+    # the repository's, so it does not on its own ask a human to act (ADR-009).
     class HttpSmoke < Base
       def call
-        result(:missing_evidence,
+        result(:unavailable,
           detail: "Boot smoke against #{criterion.target || "the health endpoint"} needs a running " \
-                  "service; not established in a read-only baseline.")
+                  "service, which Reanimator does not provision yet.")
       end
     end
   end

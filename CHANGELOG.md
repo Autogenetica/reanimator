@@ -8,6 +8,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Escalation delivery** (section 16). `baseline`, `portfolio` and `repair` now
+  exit `2` when a human is needed — a required criterion failed or is unproven
+  (including checks asked to execute that could not), or a repair produced
+  anything but a healthy no-op — keeping
+  `1` for Reanimator itself failing, including an unreadable portfolio path.
+  Inside GitHub Actions each blocking finding becomes an `::error` annotation,
+  each advisory problem a `::notice`, and the check surface is appended to the
+  job summary. Reports are printed between `::stop-commands::` markers so
+  repository text cannot forge or silence an annotation, and `--format json`
+  stays valid JSON.
+
 - **Network egress enforcement** (section 12). A security posture's network rule
   was a label; it is now enforced or refused. Under `strict` and `local`, which
   deny egress, every executed check runs inside an empty network namespace
@@ -20,6 +31,52 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   downstream member's posture, and a bounded repair whose baseline did not
   execute stops safely instead of reading the empty result as a clean bill of
   health.
+
+### Changed
+
+- **`SupportMatrix` catches narrowed support.** It credited any CI Ruby matrix;
+  it now compares the declared floor with CI's lowest pinned release across
+  every workflow, and a matrix that rose above the floor, or pins no specific
+  release, is missing evidence. Workflows are parsed as YAML: every job's
+  `strategy.matrix` Ruby list counts, less what `exclude:` removes, plus
+  `include:` entries, kept as written; a matrix or exclusion written as an
+  expression credits nothing, since it is only known at run time. A single
+  job's pinned `ruby-version`, a version file and a reusable workflow are not
+  read — as before — so a lint job cannot stand in for the tests. A matrix
+  with exclusions is credited nothing when any of its values is an expression.
+  A workflow Reanimator cannot read (YAML aliases, which it refuses to expand,
+  or invalid YAML) is named in the result but never softens it: the readable
+  workflows decide, so a narrowing they prove still blocks, and an aliased
+  workflow's Rubies are simply not counted. The declared floor is read from
+  every root gemspec, the lowest winning. Every line that mentions
+  `required_ruby_version` (outside comments and `=begin` blocks) must be a
+  complete assignment of string literals; anything else — a constant, `%q()`,
+  interpolation, a heredoc, a lookup, a value on the next line, `send`, `||=` —
+  makes the floor unreadable, reported as missing evidence asking for a
+  literal, never read as "no floor". Of 209 installed gems with a gemspec, two
+  are affected. A floor set outside any `.gemspec` file is not seen.
+  Exclude keys and values match loosely (case aside, `7.0` as `7`), a job with
+  `if: false` is not credited, and — as before — a workflow that only runs on
+  manual dispatch is still read. Gemspec requirements written as arrays — on one
+  line or several — or `Gem::Requirement.new(...)` are read; `>= 0` sets no
+  floor.
+- **An unquoted whole-number Ruby in a matrix reads as a bare major.** YAML
+  turns `3.0` into a number that Actions renders as `3`, which setup-ruby reads
+  as the latest 3.x, so Reanimator now reads it the same way (and `3.10` as
+  `3.1`, as YAML does). A snapshot recorded with 0.1.0 may then show `3.0`
+  removed and `3` added; quote matrix versions, and re-record the snapshot.
+- **Drift snapshots record every workflow's Ruby matrix,** not just the first,
+  so drift and the baseline agree. Re-recording a snapshot may show a wider
+  matrix than before; that is reported as benign.
+- **A web application's boot smoke is `unavailable`, a new status, not missing
+  evidence.** Reanimator does not provision a running service yet; the gap is
+  its own, so the repository stays Unproven without being asked to act on it.
+- **Library warnings go to stderr, one line each,** so `--format json` stays
+  parseable and a message quoting repository content cannot become a workflow
+  command of its own.
+- **A repair with nothing to fix but something unproven escalates** instead of
+  reporting a healthy no-op. When the only gap is proof Reanimator cannot
+  establish yet, the no-op says so rather than "all required criteria pass".
 
 ## [0.1.0] - 2026-10-28
 

@@ -20,6 +20,13 @@ module Reanimator
       facts.find { |f| f.key == key.to_sym }
     end
 
+    # Every fact with this key - some, like a CI Ruby matrix, can be found once
+    # per workflow file.
+    # @return [Array<DiscoveredFact>]
+    def all(key)
+      facts.select { |f| f.key == key.to_sym }
+    end
+
     # @return [Boolean]
     def fact?(key)
       !self[key].nil?
