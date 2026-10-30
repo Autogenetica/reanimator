@@ -28,7 +28,7 @@ module Reanimator
           else
             result(:skipped, detail: "No declared runtime support matrix to verify.")
           end
-        unread_workflows(graded)
+        noting_unread_workflows(graded)
       end
 
       private
@@ -39,7 +39,7 @@ module Reanimator
       # Reanimator under-credits - the safe direction. Invalid YAML does not run
       # in Actions either; one using YAML aliases does, and its Rubies are
       # simply not counted.
-      def unread_workflows(graded)
+      def noting_unread_workflows(graded)
         unread = discovery.all(:ci_workflow_unreadable)
         return graded if unread.empty? || graded.verified?
 
