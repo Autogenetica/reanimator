@@ -131,8 +131,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   security policy, Dependabot configuration and examples. Detectors' and
   evaluators' reads of repository files - `exist?` and `read` as well as
   globs - now require the real path to lie inside the repository; a symlink
-  to a file inside it still counts. (`.reanimator.yml` and the drift
-  snapshot are read elsewhere and are not held to this yet.)
+  to a file inside it still counts. `.reanimator.yml` and the committed
+  drift snapshot are held to the same line: one linked from outside the
+  repository is refused with an error rather than read, or written through.
 - **Executed checks run only the repository's own files.** The disposable
   copy dereferenced each top-level link, so `spec -> ../elsewhere` became a
   real directory and a check passed on code outside the repository; a

@@ -10,6 +10,18 @@ RSpec.describe Reanimator::ContractFile do
     expect(file.profile).to eq(:"ruby-gem")
   end
 
+  it "refuses a contract linked from outside the repository, and reads one linked within it" do
+    outside = File.join(make_repo, "contract.yml")
+    File.write(outside, "version: 1\nintent: retire\n")
+    linked_out = make_repo
+    File.symlink(outside, File.join(linked_out, ".reanimator.yml"))
+    expect { described_class.load(linked_out) }.to raise_error(Reanimator::ContractError, /links outside/)
+
+    within = make_repo(files: {"config/reanimator.yml" => "version: 1\nintent: retire\n"})
+    File.symlink("config/reanimator.yml", File.join(within, ".reanimator.yml"))
+    expect(described_class.load(within).intent).to eq(:retire)
+  end
+
   it "returns nil when no contract file is present" do
     expect(described_class.load(make_repo)).to be_nil
   end

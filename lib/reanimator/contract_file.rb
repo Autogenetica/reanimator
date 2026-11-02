@@ -32,6 +32,7 @@ module Reanimator
     # @return [ContractFile, nil]
     def self.load(root, filename = Reanimator.configuration.contract_filename)
       full = File.join(root, filename)
+      Containment.ensure_inside!(root, full, filename)
       return nil unless File.file?(full)
 
       # Date/Time are permitted so a waiver's `expires:` can be a bare date

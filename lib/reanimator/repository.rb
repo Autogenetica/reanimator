@@ -80,8 +80,8 @@ module Reanimator
     # through `..` - and its real path is inside it too. exist?, read and
     # glob all go through it, so a symlink in the repository cannot make a
     # file outside it count as evidence; Isolation's copy keeps the same line
-    # for executed checks. (.reanimator.yml and the snapshot are read
-    # elsewhere, and are not held to it yet.)
+    # for executed checks, and Containment the same for .reanimator.yml and
+    # the committed snapshot.
     def inside?(match) = !contained(match).nil?
     private :inside?
 
