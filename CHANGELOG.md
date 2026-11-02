@@ -138,7 +138,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   real directory and a check passed on code outside the repository; a
   dangling top-level link crashed `--execute` outright. Links are now copied
   as links, and any link that leads out of the copy - absolute, climbing past
-  its root, or through another link - is left out.
+  its root, or through another link, even one that dangles until a check
+  writes through it into the original tree - is left out, and the run warns
+  which links it left out.
 
 ## [0.1.0] - 2026-10-28
 

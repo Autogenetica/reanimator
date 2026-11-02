@@ -23,12 +23,17 @@ module Reanimator
     # would lead back into the original working tree.
     def copy(root)
       destination = Dir.mktmpdir("reanimator-iso")
-      Dir.children(root).each do |child|
-        next if child == ".git"
+      begin
+        Dir.children(root).each do |child|
+          next if child == ".git"
 
-        FileUtils.cp_r(File.join(root, child), File.join(destination, child), dereference_root: false)
+          FileUtils.cp_r(File.join(root, child), File.join(destination, child), dereference_root: false)
+        end
+        report_dropped(drop_links_out(destination))
+      rescue Exception # standard:disable Lint/RescueException - nothing may leave the copy behind
+        FileUtils.remove_entry(destination, true)
+        raise
       end
-      drop_links_out(destination)
 
       return destination unless block_given?
 
@@ -43,22 +48,36 @@ module Reanimator
     # target, a relative one that climbs past the root, or one whose real
     # path - through other links - lies outside. Every link is judged before
     # any is removed. A link inside the copy, even a dangling one, stays.
+    # @return [Array<String>] the copy-relative paths of the links removed
     def drop_links_out(destination)
       top = File.realpath(destination)
-      links = Dir.glob("**/*", File::FNM_DOTMATCH, base: top).map { |relative| File.join(top, relative) }
-        .select { |path| File.symlink?(path) }
-      links.select { |link| leads_out?(link, top) }.each { |link| File.delete(link) }
+      links = Dir.glob("**/*", File::FNM_DOTMATCH, base: top).select { |relative| File.symlink?(File.join(top, relative)) }
+      links.select { |relative| leads_out?(File.join(top, relative), top) }
+        .each { |relative| File.delete(File.join(top, relative)) }
     end
 
+    # Judged as written first - with File.absolute_path, which keeps a ~ as
+    # the name it is - so a dangling link out, which has no real path yet, is
+    # caught; then by its real path, for a link that leads out through
+    # another. A target that cannot be judged leads out.
     def leads_out?(link, top)
-      target = File.readlink(link)
       inside = ->(path) { path == top || path.start_with?("#{top}/") }
-      # An absolute target expands to itself, so it is judged here too.
-      return true unless inside.call(File.expand_path(target, File.dirname(link)))
+      return true unless inside.call(File.absolute_path(File.readlink(link), File.dirname(link)))
 
       !inside.call(File.realpath(link))
-    rescue SystemCallError
-      false # dangling inside the copy: nothing outside to reach
+    rescue Errno::ENOENT, Errno::ELOOP
+      false # dangling, or a loop, inside the copy: nothing outside to reach
+    rescue SystemCallError, ArgumentError, EncodingError
+      true
+    end
+
+    # A link left out changes what a check sees, so the run says so.
+    def report_dropped(dropped)
+      return if dropped.empty?
+
+      Reanimator.logger.warn(
+        "Left #{dropped.size} link(s) out of the disposable copy because they lead outside the repository: #{dropped.join(", ")}"
+      )
     end
   end
 end
