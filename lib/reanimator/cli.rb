@@ -51,9 +51,6 @@ module Reanimator
       guard do
         contract = Reanimator.contract(path, intent: options[:intent]&.to_sym)
         if options[:export]
-          # An exported profile outranks inference from then on, so a crash
-          # must not be written down as the repository's contract.
-          contract.discovery.ensure_complete!("exported")
           emit(ContractFile.dump(contract.to_minimal_hash), machine: true)
         else
           emit(Reports::Contract.new(contract).render)

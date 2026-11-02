@@ -77,7 +77,9 @@ module Reanimator
     #   a stray byte (which would otherwise be swallowed as a "detector failed"
     #   and silently drop facts), including under a C/US-ASCII locale.
     # A directory where a file is expected is not that file, so it reads as
-    # absent; a file that exists but cannot be read still raises.
+    # absent; a file Reanimator can see but not read still raises. A file
+    # behind a directory it cannot search is not seen at all, and reads as
+    # absent - as File.exist? did before.
     def read(relative)
       return unless File.file?(absolute(relative))
 

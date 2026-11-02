@@ -105,8 +105,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   check may reuse, so the run cannot be Alive and exits `2`; `drift`, `drift
   --record` and `contract --export` refuse a contract read in part (exit
   `1`); `repair` stops safely; and `support_matrix` names the detector when
-  Bundler or GitHub Actions failed. Inputs that made detectors raise for no
-  good reason no longer do: a directory where a file was expected reads as
+  Bundler or GitHub Actions failed; the `contract` review says it was "read in
+  part". Inputs that made detectors raise for no good reason no longer do: a
+  directory, FIFO or broken symlink where a file was expected reads as
   absent, a `package.json` that is not an object has no scripts, and a
   workflow `strategy` written as one expression - or a `.nan` in a matrix -
   credits nothing rather than crashing.

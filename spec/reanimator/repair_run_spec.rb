@@ -78,6 +78,7 @@ RSpec.describe Reanimator::RepairRun do
     run = run_for(broken_repo(repair: :allowed))
     expect(run.outcome).to eq(:safe_stop)
     expect(run.reason).to include("the Relationships detector failed")
+    expect(run.pre_state).to be_nil # stopped before any check executed
   end
 
   it "safely stops when no ready agent is available" do

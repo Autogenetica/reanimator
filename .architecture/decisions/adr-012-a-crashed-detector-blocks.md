@@ -32,15 +32,22 @@ and it is judged where a verdict is made, not by each consumer:
   it, and a declared check may not take its id. The run cannot be Alive, and
   it escalates with exit 2 through every surface results already reach.
 - A contract read in part is never written down: snapshots (`drift`,
-  `drift --record`) and `contract --export` refuse with exit 1.
-- `repair` stops safely before proposing anything against it.
-- `discover` lists the failure under "not read".
+  `drift --record`) and exports (`contract --export`, and
+  `EffectiveContract#to_minimal_hash` for library callers) refuse, exit 1 on
+  the command line.
+- `repair` stops safely before anything executes.
+- `discover` lists the failure under "not read", and the `contract` review
+  opens with "Read in part".
 
-Inputs that made detectors raise without being a reason to block - a
-directory where a file was expected, a `package.json` that is not an object,
-a workflow `strategy` written as one expression, a `.nan` in a matrix - are
-fixed in the detectors, so the block is kept for genuine bugs and unreadable
-files.
+Inputs that made detectors raise without being a reason to block are fixed
+where they arose: `Repository#read` treats a directory, FIFO or broken symlink
+where a file was expected as absent, and the detectors accept a `package.json`
+that is not an object, a workflow `strategy` written as one expression, and a
+non-finite number in a matrix, which credits nothing. The block is kept for
+genuine bugs and for files Reanimator can see but not read. (A file behind a
+directory it cannot search is not seen at all and reads as absent, as before;
+git does not record directory permissions, so this arises only in local
+trees.)
 
 ## Alternatives considered
 

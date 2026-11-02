@@ -186,14 +186,16 @@ module Reanimator
       # and neither is an expression such as ${{ matrix.ruby }}, whose value
       # only exists while the workflow runs.
       def scalars(value)
-        Array(value).select { |item| item.is_a?(Numeric) || (item.is_a?(String) && !item.include?("${{")) }
+        Array(value).select do |item|
+          (item.is_a?(Numeric) && item.finite?) || (item.is_a?(String) && !item.include?("${{"))
+        end
       end
 
       # Actions renders a YAML number the way JSON would: 3.0 becomes "3",
       # which setup-ruby reads as the latest 3.x - so a whole float is a bare
       # major, not 3.0.
       def ruby_label(value)
-        (value.is_a?(Float) && value.finite? && value == value.floor) ? value.to_i.to_s : value.to_s
+        (value.is_a?(Float) && value == value.floor) ? value.to_i.to_s : value.to_s
       end
 
       def security_facts(workflows)

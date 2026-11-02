@@ -548,6 +548,8 @@ RSpec.describe "escalation delivery" do
       crash(Reanimator::Detectors::RubyGem)
       status, out, err = run_cli("contract", repo, "--export")
       expect([status, out, err]).to match([1, "", /cannot be exported/])
+      expect { Reanimator.contract(repo).to_minimal_hash }.to raise_error(Reanimator::DiscoveryIncomplete)
+      expect(run_cli("contract", repo)[1]).to include("Read in part: the RubyGem detector failed")
     end
 
     it "refuses to record or compare a contract read in part" do

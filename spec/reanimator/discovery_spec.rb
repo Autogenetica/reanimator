@@ -159,13 +159,13 @@ RSpec.describe Reanimator::Discovery do
   end
 
   it "does not crash on files that are not what they seem" do
-    workflow = "jobs:\n  t:\n    strategy: \"${{ fromJSON(needs.setup.outputs.strategy) }}\"\n  n:\n    strategy:\n      matrix:\n        ruby: [.nan, 3.3]\n"
-    root = make_repo(files: {"Gemfile" => "source 'x'\n", "package.json" => "[]", ".github/workflows/ci.yml" => workflow})
+    workflow = "jobs:\n  t:\n    strategy: \"${{ fromJSON(needs.setup.outputs.strategy) }}\"\n  n:\n    strategy:\n      matrix:\n        ruby: [.nan, .inf, 3.3]\n"
+    root = make_repo(files: {"Gemfile" => "source 'x'\n", "package.json" => "[]", "web/package.json" => "{\"scripts\": []}", ".github/workflows/ci.yml" => workflow})
     %w[.ruby-version config/routes.rb].each { |dir| FileUtils.mkdir_p(File.join(root, dir)) }
     result = Reanimator::Discovery.new(Reanimator::Repository.at(root)).run
 
     expect(result.failures).to eq([])
-    expect(result.all(:ci_ruby_matrix).flat_map { |fact| Array(fact.value) }).to contain_exactly("NaN", "3.3")
+    expect(result.all(:ci_ruby_matrix).flat_map { |fact| Array(fact.value) }).to contain_exactly("3.3")
   end
 
   it "records a detector that raised, so its missing facts are not read as absent" do

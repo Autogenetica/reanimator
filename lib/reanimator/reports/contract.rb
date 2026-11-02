@@ -12,7 +12,7 @@ module Reanimator
       end
 
       def render
-        [header, autonomy_section, security_section, criteria_section,
+        [header, incomplete_section, autonomy_section, security_section, criteria_section,
           protected_section, notes_section].compact.join("\n\n")
       end
 
@@ -25,6 +25,15 @@ module Reanimator
           "Profile:  #{@contract.profile.id} (#{@contract.profile_source}) — #{@contract.profile.summary}",
           "Policy version: #{@contract.policy_version}"
         ].join("\n")
+      end
+
+      # A contract built without some detector's facts may be missing
+      # obligations, so the review says so before showing what it has.
+      def incomplete_section
+        failures = @contract.discovery.failures
+        return if failures.empty?
+
+        "Read in part: #{failures.join("; ")}. This contract may be missing obligations."
       end
 
       def autonomy_section
