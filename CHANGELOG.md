@@ -116,7 +116,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `/path/src/repo` globbed every file back in its real case, failed to trim
   the root off, and so lost each gemspec: the declared floor vanished and
   `support_matrix` reported nothing to verify. Paths are now globbed from the
-  root itself.
+  root itself, which also reads a root whose name holds glob characters
+  (`br[1]`) - before, it matched nothing there. A pattern that leaves the
+  root, absolute or through `..`, matches nothing: a declared
+  `documentation_check` target such as `/etc/hosts` or `../other/README`
+  can no longer be satisfied by a file outside the repository.
 
 ## [0.1.0] - 2026-10-28
 

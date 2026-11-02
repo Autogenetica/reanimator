@@ -189,6 +189,16 @@ RSpec.describe Reanimator::Discovery do
     expect(Reanimator::Repository.at(variant).glob("*.gemspec")).to eq(["widget.gemspec"])
   end
 
+  it "globs only inside the repository, whatever the root's name holds" do
+    root = File.join(make_repo, "br[1]")
+    FileUtils.mkdir_p(File.join(root, "sub"))
+    File.write(File.join(root, "widget.gemspec"), "")
+    repository = Reanimator::Repository.at(File.join(root, "sub"))
+
+    expect(Reanimator::Repository.at(root).glob("*.gemspec")).to eq(["widget.gemspec"])
+    expect(%w[/etc/hosts* ../*.gemspec sub/../../*].map { |pattern| repository.glob(pattern) }).to eq([[], [], []])
+  end
+
   it "survives non-UTF-8 files and still detects the ecosystem" do
     path = make_repo(files: {"widget.gemspec" => "x"})
     # A Gemfile with an invalid byte would otherwise make the detector's regex

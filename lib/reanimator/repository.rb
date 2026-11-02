@@ -65,7 +65,11 @@ module Reanimator
     #   Globbed from the root rather than trimmed from absolute paths: on a
     #   case-insensitive filesystem the matches come back in their real case,
     #   which a root given in another case would not trim.
+    #   A pattern that leaves the root - absolute, or through `..` - matches
+    #   nothing: evidence comes from the repository or not at all.
     def glob(pattern)
+      return [] if pattern.start_with?("/") || pattern.split("/").include?("..")
+
       Dir.glob(pattern, File::FNM_DOTMATCH, base: path).sort
     end
 
