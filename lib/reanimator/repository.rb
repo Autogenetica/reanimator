@@ -79,8 +79,9 @@ module Reanimator
     # Whether a path is written inside the root - neither absolute nor
     # through `..` - and its real path is inside it too. exist?, read and
     # glob all go through it, so a symlink in the repository cannot make a
-    # file outside it count as evidence. (.reanimator.yml, the snapshot and
-    # Isolation's copy are read elsewhere, and are not held to it yet.)
+    # file outside it count as evidence; Isolation's copy keeps the same line
+    # for executed checks. (.reanimator.yml and the snapshot are read
+    # elsewhere, and are not held to it yet.)
     def inside?(match) = !contained(match).nil?
     private :inside?
 
