@@ -101,19 +101,28 @@ module Reanimator
     def read_file(file)
       reading = Reading.new([], nil, [], nil, false, false)
       body = read_source(file)
-      return reading.tap { reading.unread = true } unless body
-      return reading.tap { reading.unreadable = "it is too large to read" } if body.bytesize > MAX_BYTES
-      return reading.tap { reading.unreadable = "it is nested too deeply to read" } if nesting(body) > MAX_NESTING
+      unless body
+        reading.unread = true
+        return reading
+      end
+      return refused(reading, "it is too large to read") if body.bytesize > MAX_BYTES
+      return refused(reading, "it is nested too deeply to read") if nesting(body) > MAX_NESTING
 
       parsed = Prism.parse(body)
-      return reading.tap { reading.unreadable = "it does not parse as Ruby" } if parsed.failure?
+      return refused(reading, "it does not parse as Ruby") if parsed.failure?
 
       nodes = flatten(parsed.value)
       reading.load_path = load_path_changed?(nodes, file)
       nodes.each { |node| visit(node, file, body.lines, reading) }
       reading
     rescue SystemStackError
-      reading.tap { reading.unreadable = "it is nested too deeply to read" }
+      refused(reading, "it is nested too deeply to read")
+    end
+
+    # A reading that stops at its first refusal, with nothing else read.
+    def refused(reading, reason)
+      reading.unreadable = reason
+      reading
     end
 
     # The deepest run of open brackets, counted without regard to strings - an
