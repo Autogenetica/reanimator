@@ -24,7 +24,11 @@ module Reanimator
       LITERAL_PATH = /\A["']([^"'#]*)["']/
       EXPANDED_PATH = /\AFile\.expand_path\(\s*["']([^"'#]*)["']\s*,\s*(__dir__|__FILE__|File\.dirname\(__FILE__\))\s*\)/
       # Or joined to the loading file's directory: File.dirname(__FILE__) + "/x".
-      JOINED_PATH = /\A(?:File\.dirname\(__FILE__\)|__dir__)\s*\+\s*["']\/?([^"'#]*)["']/
+      JOINED_PATH = /\A(?:File\.dirname\(__FILE__\)|__dir__)\s*\+\s*["']\/([^"'#]*)["']/
+      # What may follow a load's path: a closing parenthesis, a modifier, a
+      # comment. Anything else - a + "suffix", an adjacent literal, a .sub -
+      # changes the path, so the load is not followed.
+      PATH_END = /\A\s*\)?\s*(?:(?:if|unless)\b.*|;.*|#.*)?\z/
       # How many levels of loads Reanimator follows from a gemspec.
       MAX_LOAD_DEPTH = 4
 
@@ -111,7 +115,8 @@ module Reanimator
       # followed, or nil.
       def each_source(gemspec)
         unfollowed, seen = nil, Set.new
-        pending = [[real_path(repository.absolute(gemspec)), 0]]
+        start = real_path(repository.absolute(gemspec))
+        pending = [[start, 0]]
         until pending.empty?
           file, depth = pending.shift
           next unless seen.add?(file)
@@ -123,6 +128,12 @@ module Reanimator
           loads, unfollowable = loaded_files(body, file)
           unfollowed ||= unfollowable && "it loads `#{unfollowable}`, which Reanimator cannot follow"
           next if loads.empty?
+
+          # A symlinked gemspec's loads resolve from where the link sits.
+          if file == start && start != File.join(root, gemspec)
+            unfollowed ||= "it is a symlink, so the files it loads cannot be placed"
+            next
+          end
 
           if depth < MAX_LOAD_DEPTH
             pending.concat(loads.map { |path| [path, depth + 1] })
@@ -151,7 +162,7 @@ module Reanimator
       # finds among installed gems, or nil when Reanimator cannot follow it -
       # a path built at runtime, or one outside the repository.
       def load_target(kind, argument, file)
-        literal = argument[LITERAL_PATH, 1]
+        literal = whole(LITERAL_PATH, argument)&.[](1)
         return repository_file(File.join(root, "lib", ruby_file(literal))) || :library if library?(kind, literal)
 
         path = load_path(kind, argument, file)
@@ -162,29 +173,38 @@ module Reanimator
 
       # A bare require of a literal name: Ruby searches the load path for it.
       def library?(kind, literal)
-        kind == "require" && literal && !literal.start_with?("./", "../", "/")
+        kind == "require" && literal && !literal.start_with?("./", "../", "/", "~")
       end
 
       # The absolute path a load names, or nil when it is built at runtime.
-      # Paths are resolved as Ruby does, with File.absolute_path: a leading ~
-      # names no home directory, and a path Ruby could not use is unfollowed.
+      # Paths are resolved as Ruby resolves them: require_relative and a
+      # joined path take the name as written, while File.expand_path, load
+      # and require expand a leading ~ - to a home directory, outside the
+      # repository, or to an error, which leaves the load unfollowed.
       def load_path(kind, argument, file)
-        if (expanded = EXPANDED_PATH.match(argument))
-          File.absolute_path(expanded[1], (expanded[2] == "__FILE__") ? file : File.dirname(file))
-        elsif (joined = argument[JOINED_PATH, 1])
-          File.absolute_path(joined, File.dirname(file))
-        elsif (literal = argument[LITERAL_PATH, 1])
-          File.absolute_path(literal, (kind == "require_relative") ? File.dirname(file) : root)
+        if (expanded = whole(EXPANDED_PATH, argument))
+          File.expand_path(expanded[1], (expanded[2] == "__FILE__") ? file : File.dirname(file))
+        elsif (joined = whole(JOINED_PATH, argument))
+          File.absolute_path(joined[1], File.dirname(file))
+        elsif (literal = whole(LITERAL_PATH, argument)&.[](1))
+          (kind == "require_relative") ? File.absolute_path(literal, File.dirname(file)) : File.expand_path(literal, root)
         end
+      end
+
+      # The pattern's match when nothing after it changes the path, or nil.
+      def whole(pattern, argument)
+        match = pattern.match(argument)
+        match if match && PATH_END.match?(match.post_match)
       end
 
       def ruby_file(path) = path.end_with?(".rb") ? path : "#{path}.rb"
 
-      # The real path of a regular file inside the repository, or nil - a
-      # symlink out of the repository is outside it.
+      # The real path of a regular file inside the repository, or nil. A load
+      # through a symlink is not followed: Ruby resolves the linked file's own
+      # loads from where the link sits, and Reanimator reads from its target.
       def repository_file(path)
         real = File.realpath(path)
-        real if real.start_with?("#{root}/") && File.file?(real)
+        real if real == path && real.start_with?("#{root}/") && File.file?(real)
       rescue SystemCallError
         nil
       end

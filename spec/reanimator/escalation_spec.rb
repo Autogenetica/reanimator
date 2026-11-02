@@ -342,8 +342,7 @@ RSpec.describe "escalation delivery" do
           "expand_path from __FILE__" => ["require File.expand_path('../lib/common', __FILE__)", "lib/common.rb"],
           "dirname joined" => ["require File.dirname(__FILE__) + '/lib/common'", "lib/common.rb"],
           "require from the root" => ["require './gemspec'", "gemspec.rb"],
-          "a file named with ~" => ["require_relative '~common'", "~common.rb"],
-          "load of a file named with ~" => ["load '~common.rb'", "~common.rb"]
+          "a file named with ~" => ["require_relative '~common'", "~common.rb"]
         }.each do |shape, (load, path)|
           expect(floor_in(gemspec_loading(load).merge(path => common)).value(:supported_ruby)).to eq([">= 3.2"]), shape
         end
@@ -388,16 +387,37 @@ RSpec.describe "escalation delivery" do
 
         {
           "outside the repository" => "require_relative '../shared'",
-          "an absolute path" => "require_relative '#{outside}/shared'",
+          "an absolute path" => "require_relative '#{File.realpath(outside)}/shared'",
           "a missing file" => "require_relative 'nowhere'",
-          "a built path" => "require File.join(__dir__, 'gemspec')"
+          "a built path" => "require File.join(__dir__, 'gemspec')",
+          "a suffix added" => "require_relative 'gemspec' + '_low'",
+          "an adjacent literal" => "require_relative 'gemspec' '_low'",
+          "a joined path with a suffix" => "require File.dirname(__FILE__) + '/gemspec' + '_low'",
+          "a joined path without a slash" => "require __dir__ + 'gemspec'",
+          "load of ~" => "load '~gemspec.rb'",
+          "require of ~" => "require '~gemspec'",
+          "expand_path of ~" => "require File.expand_path('~/gemspec', __dir__)"
         }.each do |shape, load|
-          discovered = floor_in(gemspec_loading(load))
+          discovered = floor_in(gemspec_loading(load).merge("gemspec.rb" => common, "~gemspec.rb" => common, "~/gemspec.rb" => common, "lib/~gemspec.rb" => common))
           expect(discovered.value(:supported_ruby_unreadable)).to include(load), shape
           expect(discovered.value(:supported_ruby)).to be_nil, shape
         end
       ensure
         FileUtils.rm_rf(outside)
+      end
+
+      it "does not follow loads through a symlink, which Ruby resolves from where the link sits" do
+        repo = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(
+          gemspec_loading("require_relative 'lib/linked'"), "other/common.rb" => common, "lib/widget.rb" => ""
+        ))
+        File.symlink(File.join(repo, "other/common.rb"), File.join(repo, "lib/linked.rb"))
+        expect(Reanimator.discover(repo).value(:supported_ruby_unreadable)).to include("require_relative 'lib/linked'")
+
+        linked = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(
+          "sub/real.gemspec" => "require_relative 'common'\nGem::Specification.new { |s| common_spec(s) }\n", "sub/common.rb" => common
+        ).except("widget.gemspec"))
+        File.symlink(File.join(linked, "sub/real.gemspec"), File.join(linked, "widget.gemspec"))
+        expect(Reanimator.discover(linked).value(:supported_ruby_unreadable)).to include("it is a symlink")
       end
 
       it "treats a loaded file it cannot read as an unreadable floor" do

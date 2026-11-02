@@ -20,27 +20,35 @@ credits any CI matrix - exactly the narrowing the check exists to catch.
 
 ## Decision
 
-The reader returns the floor Ruby would assign, or says it cannot read it. It
-never guesses, and "could not read" is missing evidence, never "no floor".
+The reader returns the floor Ruby would assign, or says it cannot read it -
+within the known limits below, which it cannot see. "Could not read" is
+missing evidence, never "no floor".
 
 - Every live line mentioning `required_ruby_version` must be a complete
   assignment of string literals. Anything else - a constant, interpolation,
   a heredoc, a trailing comma, a next-line chain or operator - is unreadable.
   So is a mention after `__END__` or inside `=begin`, where a heredoc can make
   it code.
-- Local files the gemspec loads are read too, resolved as Ruby resolves them:
-  `require_relative` and `File.expand_path`/`File.dirname(__FILE__) +` from
-  the loading file, `load` and `./` paths from the root, a bare `require` when
-  `lib/` holds it. Nested loads are followed four levels deep, only to real
-  paths inside the repository, each file read on its own as UTF-8.
-- A load the reader cannot follow - a built path, one leaving the repository,
-  a missing file, a path Ruby could not use - makes the floor unreadable,
+- Local files the gemspec loads are read too, for the forms Ruby resolves the
+  same way every time: `require_relative`, `File.expand_path` from `__dir__`
+  or `__FILE__`, and `File.dirname(__FILE__) + "/x"` or `__dir__ + "/x"` from
+  the loading file; `load` and `./` paths from the root; a bare `require` when
+  `lib/` holds it. Only `require_relative` and a joined path keep a leading
+  `~` as written; the others expand it, as Ruby does. The path must be the
+  whole argument - anything after it but a parenthesis, a modifier or a
+  comment changes the path. Nested loads are followed four levels deep, each
+  file read on its own as UTF-8, and only to regular files inside the
+  repository reached without a symlink: Ruby places a linked file's own loads
+  where the link sits, so a symlinked gemspec or loaded file is not followed.
+- A load the reader cannot follow - a built path, one leaving the repository
+  or passing through a symlink, a missing file, a path Ruby could not use -
+  makes the floor unreadable,
   **unless the gemspec itself assigns a literal floor**. A floor found only in
   a followed file does not settle it.
 - An exception in the reader must never be a quieter way to reach "no floor":
-  a path Ruby could not use is an unfollowed load, a file that cannot be read
-  is unreadable, and a detector that still crashes is a discovery failure,
-  which must block rather than drop the facts.
+  a path Ruby could not use is an unfollowed load, and a file that cannot be
+  read is unreadable. A detector that still crashes is a discovery failure,
+  which ADR-012 makes block the run rather than drop the facts.
 
 ## Known limits
 
@@ -53,12 +61,16 @@ higher than Ruby's:
 - `eval`/`module_eval` of a file's text, and `Gem::Specification.load` of a
   base gemspec - the platform-variant pattern.
 - An unfollowed load beside a literal floor in the gemspec, when that load
-  lowers the floor afterwards.
+  lowers the floor afterwards - or when the gemspec's floor sits in a helper
+  it never calls, which still settles it.
+- A floor assigned inside a multi-line `if`, `unless` or `case`: the reader
+  sees lines, not control flow, and reads it as unconditional.
 
-On installed gems, the reader matches `Gem::Specification.load` or reports
-unreadable for every gemspec checked; these shapes come from constructed
-fixtures and one real precedent (fiddle's `module_eval` of its version file,
-which sets no floor).
+Across 256 installed gemspecs, a reviewer compared the reader with
+`Gem::Specification.load`: it never returned a higher floor than Ruby's, nor
+"no floor" where Ruby had one. These shapes come from constructed fixtures
+and one real precedent (fiddle's `module_eval` of its version file, which
+sets no floor).
 
 ## Alternatives considered
 
@@ -67,9 +79,9 @@ which sets no floor).
   filesystem isolation (§12, ADR-010), and should then replace this reader,
   not sit beside it.
 - **Treat every unfollowed load as unreadable, even beside a gemspec floor.**
-  Closes the last limit above, but by the reviewers' count 27 of 256
-  installed gemspecs - mostly the
-  default gems' `rescue LoadError; require_relative "version"` fallback - would
+  Closes the third limit above, but by a reviewer's count 27 of 256
+  installed gemspecs - mostly the default gems'
+  `rescue LoadError; require_relative "version"` fallback - would
   ask their owners to rewrite a floor that is already a plain literal. A
   literal floor in the gemspec is the owner's own statement; a later override
   by an unfollowed file needs deliberate indirection.
@@ -77,5 +89,12 @@ which sets no floor).
   load.** Would close the first three limits, but prose in descriptions and
   heredocs mentions all three; the cost in false alarms was not measured, so it
   is left for a change that measures it.
+- **Parse with Prism instead of reading lines.** Prism ships with Ruby 3.3+
+  and parses without evaluating, so it would see heredocs, `__END__`,
+  `=begin`, conditionals and loads anywhere in a statement as Ruby does, and
+  would retire most of the line rules above. Not done here only because it
+  replaces the reader rather than fixing it; it is the natural next step, and
+  the specs pinning this reader's behaviour carry over as its acceptance
+  tests.
 - **Ignore loads, read only the gemspec.** The original reader. It read
   extralite, whose floor is set in a loaded file, as "no floor".
