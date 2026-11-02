@@ -54,16 +54,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   workflows decide, so a narrowing they prove still blocks, and an aliased
   workflow's Rubies are simply not counted. The declared floor is read from
   every root gemspec, the lowest winning. Every line that mentions
-  `required_ruby_version` (outside comments and `=begin` blocks) must be a
-  complete assignment of string literals; anything else — a constant, `%q()`,
-  interpolation, a heredoc, a lookup, a value on the next line, `send`, `||=` —
+  `required_ruby_version` (outside full-line comments) must be a complete
+  assignment of string literals; anything else — a constant, `%q()`,
+  interpolation, a heredoc, a lookup, a value on the next line, `send`, `||=`,
+  a trailing comma, a next-line method chain or boolean operator, a mention
+  after `__END__` or inside `=begin`, where a heredoc could make it code —
   makes the floor unreadable, reported as missing evidence asking for a
-  literal, never read as "no floor". Of 209 installed gems with a gemspec, two
-  are affected. A floor set in a local file the gemspec `require_relative`s or
-  `load`s is read too (one level deep); code a line-by-line reader cannot
-  follow — interpolation in a heredoc, an unclosed `=begin`, a next-line
-  method chain on the floor — makes the floor unreadable, and nothing after
-  `__END__` is read.
+  literal, never read as "no floor". The floor is also read from the local
+  files a gemspec loads — `require_relative`, `load`, a `require` found under
+  `lib/`, or `File.expand_path` from `__dir__` or `__FILE__` — following
+  nested loads four levels deep, each file read on its own as UTF-8 whatever
+  the locale. When no floor is found, a load Reanimator cannot follow (a path
+  built at runtime, or one leaving the repository, symlinks included) or a
+  file it cannot read makes the floor unreadable too. Of 260 installed gem
+  versions with a gemspec, five read as unreadable.
   Exclude keys and values match loosely (case aside, `7.0` as `7`), a job with
   `if: false` is not credited, and — as before — a workflow that only runs on
   manual dispatch is still read. Gemspec requirements written as arrays — on one

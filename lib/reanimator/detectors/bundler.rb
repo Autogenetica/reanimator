@@ -41,7 +41,7 @@ module Reanimator
         unread = unreadable_floor
         if unread
           facts << fact(:supported_ruby_unreadable, category: :support_matrix,
-            claim: "#{unread.source} declares its Ruby floor as `#{unread.version}`, which is not a literal Reanimator can read.",
+            claim: "#{unread.source} sets its Ruby floor in a way Reanimator cannot read: #{unread.version}.",
             value: unread.version, confidence: :high, source: unread.source, method: :version_pin, detail: unread.version)
         end
 
@@ -69,41 +69,132 @@ module Reanimator
       def gemspec_floors
         @gemspec_floors ||= repository.glob("*.gemspec").sort
           .select { |path| File.file?(repository.absolute(path)) }
-          .map { |path| GemspecFloor.new(path, *read_floor(with_loaded_files(repository.read(path).to_s))) }
+          .map { |path| GemspecFloor.new(path, *read_gemspec(path)) }
       end
 
-      # Local files a gemspec loads, by literal path: a floor can be set in a
-      # shared file the gemspec require_relative's or loads. One level deep.
-      LOADED_FILE = /^\s*(?:require_relative|load)\s*\(?\s*["']([^"']+)["']/
+      # The requirements a gemspec and the local files it loads declare, each
+      # file read on its own, or [[], reason] for the first thing Reanimator
+      # could not read or follow. A load it cannot follow only matters when no
+      # floor was found: then the floor may be in that file, and "no floor"
+      # would credit any matrix.
+      def read_gemspec(gemspec)
+        requirements, unfollowed, seen = [], nil, Set.new
+        pending = [[real_path(repository.absolute(gemspec)), 0]]
+        until pending.empty?
+          file, depth = pending.shift
+          next unless seen.add?(file)
 
-      # The gemspec followed by the local files it loads, read as one, so a
-      # floor set in a shared file is seen rather than missing.
-      def with_loaded_files(body)
-        ([body] + body.scan(LOADED_FILE).flatten.filter_map { |relative| local_file(relative) }).join("\n")
+          body = read_source(file) or return [[], "#{relative(file)} could not be read"]
+          found, unreadable = read_floor(body)
+          return [[], file_reason(unreadable, file, gemspec)] if unreadable
+
+          requirements.concat(found)
+          loads, unfollowable = loaded_files(body, file)
+          unfollowed ||= unfollowable && "it loads `#{unfollowable}`, which Reanimator cannot follow"
+          unfollowed ||= "it loads files more than #{MAX_LOAD_DEPTH} levels deep" if loads.any? && depth >= MAX_LOAD_DEPTH
+          pending.concat(loads.map { |path| [path, depth + 1] }) if depth < MAX_LOAD_DEPTH
+        end
+        (requirements.empty? && unfollowed) ? [[], unfollowed] : [requirements.uniq, nil]
       end
 
-      # The contents of a repository file named by a load path, or nil when it
-      # is missing or outside the repository.
-      def local_file(relative)
-        path = File.expand_path(relative.end_with?(".rb") ? relative : "#{relative}.rb", repository.path)
-        File.read(path) if path.start_with?("#{repository.path}/") && File.file?(path)
+      # How a gemspec loads another file, e.g. `require_relative "lib/w/version"`.
+      LOAD = /(?:\A|;)\s*(require_relative|require|load)\b[\s(]+(.*)/
+      # A load path written as a literal, or built from one beside the loading
+      # file: File.expand_path("x", __dir__) or File.expand_path("../x", __FILE__).
+      LITERAL_PATH = /\A["']([^"'#]*)["']/
+      EXPANDED_PATH = /\AFile\.expand_path\(\s*["']([^"'#]*)["']\s*,\s*(__dir__|__FILE__|File\.dirname\(__FILE__\))\s*\)/
+      # How many levels of loads Reanimator follows from a gemspec.
+      MAX_LOAD_DEPTH = 4
+
+      # The repository files this body loads, and the first load Reanimator
+      # could not follow, or nil.
+      def loaded_files(body, file)
+        unfollowed = nil
+        paths = body.lines.filter_map do |line|
+          next if comment?(line) || !(load = LOAD.match(line))
+
+          target = load_target(*load.captures, file)
+          unfollowed ||= line.strip unless target
+          target unless target == :library
+        end
+        [paths, unfollowed]
       end
 
-      # The requirements a gemspec declares, and the first line Reanimator
-      # could not read as one. Every live line that mentions
-      # required_ruby_version must be a complete assignment of string literals
-      # - [">= 3.1", "< 4"] and Gem::Requirement.new(">= 3.1") included -
-      # or the whole floor is unreadable: a mention that is not understood
-      # never silently becomes "no floor", which would credit any matrix.
+      # Where a load leads: a repository file, :library for a require Ruby
+      # finds among installed gems, or nil when Reanimator cannot follow it -
+      # a path built at runtime, or one outside the repository.
+      def load_target(kind, argument, file)
+        expanded = EXPANDED_PATH.match(argument)
+        literal = argument[LITERAL_PATH, 1]
+        path =
+          if expanded
+            File.expand_path(expanded[1], (expanded[2] == "__FILE__") ? file : File.dirname(file))
+          elsif literal.nil?
+            return
+          elsif kind == "require_relative"
+            File.expand_path(literal, File.dirname(file))
+          elsif kind == "load" || literal.start_with?("./", "../", "/")
+            File.expand_path(literal, root)
+          else
+            return repository_file(File.join(root, "lib", ruby_file(literal))) || :library
+          end
+        repository_file((kind == "load") ? path : ruby_file(path))
+      end
+
+      def ruby_file(path) = path.end_with?(".rb") ? path : "#{path}.rb"
+
+      # The real path of a regular file inside the repository, or nil - a
+      # symlink out of the repository is outside it.
+      def repository_file(path)
+        real = File.realpath(path)
+        real if real.start_with?("#{root}/") && File.file?(real)
+      rescue SystemCallError
+        nil
+      end
+
+      def root = @root ||= real_path(repository.path)
+
+      def real_path(path)
+        File.realpath(path)
+      rescue SystemCallError
+        path
+      end
+
+      def relative(file) = file.delete_prefix("#{root}/")
+
+      # A file's text as UTF-8, whatever the locale, or nil when it cannot be
+      # read.
+      def read_source(file)
+        File.read(file, encoding: "UTF-8").scrub
+      rescue SystemCallError, IOError
+        nil
+      end
+
+      def file_reason(reason, file, gemspec)
+        (relative(file) == gemspec) ? reason : "#{reason} in #{relative(file)}"
+      end
+
+      # The requirements a body declares, and why Reanimator could not read
+      # them. Every live line that mentions required_ruby_version must be a
+      # complete assignment of string literals - [">= 3.1", "< 4"] and
+      # Gem::Requirement.new(">= 3.1") included - or the whole floor is
+      # unreadable: a mention that is not understood never silently becomes
+      # "no floor", which would credit any matrix. A mention after __END__ or
+      # inside =begin is unreadable too: a heredoc can make either one text,
+      # and a line-by-line reader cannot tell.
       def read_floor(body)
-        lines = live_lines(body)
-        return [[], "=begin without =end"] unless lines
+        classified = classified_lines(body)
+        return [[], "a =begin block is never closed"] unless classified
 
+        hidden = classified.find { |line, kind| kind == :hidden && line.include?("required_ruby_version") }
+        return [[], "`#{hidden[0].strip}` sits after __END__ or inside =begin, where it may be code"] if hidden
+
+        lines = classified.map { |line, kind| (kind == :code) ? line : "\n" }
         requirements = lines.each_index.flat_map do |index|
           next [] unless lines[index].include?("required_ruby_version")
 
           value = assigned_value(lines[index], lines.drop(index + 1))
-          return [[], lines[index].strip] unless value && literal?(value) && !continued?(lines, index, value)
+          return [[], "`#{lines[index].strip}` is not a literal"] unless value && literal?(value) && !continued?(lines, index, value)
 
           literals(value)
         end
@@ -114,9 +205,13 @@ module Reanimator
       # boolean operator at the start of the next line changes the value.
       CONTINUATION = /\A\s*(?:\.|&\.|&&|\|\||and\b|or\b)/
 
-      # Whether the line after the assignment (and any array it spans) carries
-      # the assigned value on, so the literal is not what Ruby assigns.
+      # Whether the value carries on past the assignment (and any array it
+      # spans), so the literal is not what Ruby assigns: a trailing comma
+      # makes an array of the next line, and a chain or operator on the next
+      # line changes the value.
       def continued?(lines, index, value)
+        return true if value.rstrip.end_with?(",")
+
         following = lines.drop(index + value.lines.size).find { |line| !line.strip.empty? }
         following && CONTINUATION.match?(following)
       end
@@ -166,21 +261,29 @@ module Reanimator
         line
       end
 
-      # Code lines only: full-line comments and =begin/=end blocks blanked.
-      # Code lines only: full-line comments and =begin/=end blocks blanked,
-      # and nothing after __END__. A line starting with #{ is interpolation
-      # inside a string, not a comment, so it stays. Nil when a =begin is
-      # never closed - Ruby would reject the file, so nothing in it is trusted.
-      def live_lines(body)
-        in_block = false
-        lines = body.lines.take_while { |line| line.chomp != "__END__" }.map do |line|
-          in_block = true if line.start_with?("=begin")
-          live = !in_block && !(line.lstrip.start_with?("#") && !line.lstrip.start_with?("\#{"))
+      # Each line with what Ruby makes of it: :code, :comment for a full-line
+      # comment, or :hidden inside =begin/=end and from __END__ on. Nil when a
+      # =begin is never closed - Ruby would reject the file, so nothing in it
+      # is trusted.
+      def classified_lines(body)
+        in_block = ended = false
+        lines = body.lines.map do |line|
+          ended ||= !in_block && line.chomp == "__END__"
+          in_block = true if !ended && line.start_with?("=begin")
+          kind = if ended || in_block then :hidden
+          elsif comment?(line) then :comment
+          else
+            :code
+          end
           in_block = false if line.start_with?("=end")
-          live ? line : "\n"
+          [line, kind]
         end
         lines unless in_block
       end
+
+      # A full-line comment. A line starting with #{ is interpolation inside
+      # a string, not a comment.
+      def comment?(line) = line.lstrip.start_with?("#") && !line.lstrip.start_with?("\#{")
 
       # The lines that close an array opened, but not closed, in this value.
       def array_continuation(value, rest)
