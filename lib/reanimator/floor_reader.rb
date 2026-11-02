@@ -134,16 +134,20 @@ module Reanimator
     def literals(node)
       case node
       when Prism::StringNode then [node.unescaped.strip]
-      when Prism::ArrayNode
-        node.elements.map { |element| literals(element) }.then { |all| all.flatten if all.all? }
+      when Prism::ArrayNode then all_literals(node.elements)
       when Prism::CallNode
         if node.name == :freeze && node.receiver && !node.arguments
           literals(node.receiver)
         elsif node.name == :new && node.receiver&.slice&.delete_prefix("::") == "Gem::Requirement"
-          arguments = node.arguments&.arguments || []
-          arguments.map { |argument| literals(argument) }.then { |all| all.flatten if all.all? }
+          all_literals(node.arguments&.arguments || [])
         end
       end
+    end
+
+    # The literals of every node, or nil when any one is not literal.
+    def all_literals(nodes)
+      found = nodes.map { |node| literals(node) }
+      found.flatten if found.all?
     end
 
     def kernel?(receiver) = receiver.nil? || receiver.slice.delete_prefix("::") == "Kernel"
