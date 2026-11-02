@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "open3"
 require "timeout"
 
@@ -523,6 +524,15 @@ RSpec.describe "escalation delivery" do
       expect(Reanimator.snapshot(make_repo(files: files)).support_matrix).to contain_exactly("3.1", "3.4")
     end
 
+    [Reanimator::Detectors::Bundler, Reanimator::Detectors::GitHubActions].each do |detector|
+      it "treats a crashed #{detector.name.split("::").last} detector as missing evidence, never as nothing declared" do
+        crash(detector, Encoding::CompatibilityError.new("boom"))
+        result = support_result(narrowed_support)
+        expect(result.status).to eq(:missing_evidence)
+        expect(result.detail).to include("the #{detector.name.split("::").last} detector failed (Encoding::CompatibilityError: boom)")
+      end
+    end
+
     it "treats >= 0 as no floor at all" do
       expect(support_result(gem_with(requirement: "'>= 0'"))).to be_verified
     end
@@ -685,6 +695,57 @@ RSpec.describe "escalation delivery" do
       [status, out.string, err.string]
     end
 
+    it "blocks a baseline whose discovery was incomplete, though inference then asks for less" do
+      failing_gem = {"widget.gemspec" => "Gem::Specification.new { |s| s.name = 'widget' }\n", "README.md" => "# widget"}
+      crash(Reanimator::Detectors::RubyGem)
+      baseline = Reanimator.baseline(make_repo(files: failing_gem))
+
+      expect(baseline.contract.profile.id).not_to eq(:"ruby-gem")
+      expect(baseline.state.alive?).to be(false)
+      expect(baseline.escalations.map { |result| result.criterion.id }).to include(:discovery_complete)
+      expect(baseline.result_for(:discovery_complete).detail).to include("the RubyGem detector failed (ArgumentError: boom)")
+      expect(run_cli("baseline", make_repo(files: failing_gem)).first).to eq(2)
+    end
+
+    it "never lets a waiver or a declared check stand in for discovery_complete" do
+      contract = <<~YAML
+        version: 1
+        profile: generic
+        waivers:
+          - target: discovery_complete
+            reason: "a waiver cannot cover a crash"
+            expires: 2999-01-01
+      YAML
+      crash(Reanimator::Detectors::Fork)
+      baseline = Reanimator.baseline(make_repo(files: {".reanimator.yml" => contract}))
+      expect(baseline.result_for(:discovery_complete).status).to eq(:error)
+      expect(baseline.state.alive?).to be(false)
+
+      declared = "version: 1\nacceptance:\n  checks:\n    - id: discovery_complete\n      run: \"true\"\n"
+      expect { Reanimator.contract(make_repo(files: {".reanimator.yml" => declared})) }
+        .to raise_error(Reanimator::ContractError, /reserved/)
+    end
+
+    it "refuses to export a contract read in part" do
+      repo = make_repo(files: narrowed_support)
+      crash(Reanimator::Detectors::RubyGem)
+      status, out, err = run_cli("contract", repo, "--export")
+      expect([status, out, err]).to match([1, "", /cannot be exported/])
+      expect { Reanimator.contract(repo).to_minimal_hash }.to raise_error(Reanimator::DiscoveryIncomplete)
+      expect(run_cli("contract", repo)[1]).to include("Read in part: the RubyGem detector failed")
+    end
+
+    it "refuses to record or compare a contract read in part" do
+      repo = make_repo(files: narrowed_support)
+      crash(Reanimator::Detectors::GitHubActions)
+
+      expect { Reanimator.snapshot(repo) }.to raise_error(Reanimator::DiscoveryIncomplete, /GitHubActions detector failed/)
+      status, _out, err = run_cli("drift", repo, "--record")
+      expect([status, err]).to match([1, /read in part/])
+      expect(File.exist?(File.join(repo, ".reanimator-snapshot.json"))).to be(false)
+      expect(Reanimator.portfolio_drift([repo, make_repo(files: narrowed_support)]).requires_review?).to be(true)
+    end
+
     let(:actions) { {"GITHUB_ACTIONS" => "true", "GITHUB_STEP_SUMMARY" => File.join(make_repo(files: {}), "summary.md")} }
 
     it "exits 2, annotates a blocking finding once, and writes the check to the job summary" do
@@ -820,13 +881,16 @@ RSpec.describe "escalation delivery" do
     end
 
     it "keeps --format json parseable when a detector warns, with the default logger" do
-      root = make_repo(files: gem_with(requirement: "'>= 3.3'").merge("package.json" => "[1]"))
+      root = make_repo(files: gem_with(requirement: "'>= 3.3'"))
+      crash = File.join(make_repo, "crash.rb")
+      File.write(crash, "require 'reanimator'\nReanimator::Detectors::Commands.prepend(Module.new { def detect = raise('boom') })\n")
       exe = File.expand_path("../../exe/reanimator", __dir__)
-      output, warnings, = Open3.capture3(QUIET_CI, RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__), exe,
-        "baseline", root, "--format", "json")
+      output, warnings, status = Open3.capture3(QUIET_CI, RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__),
+        "-r", crash, exe, "baseline", root, "--format", "json")
 
       expect(warnings).to include("Commands")
-      expect { JSON.parse(output) }.not_to raise_error
+      expect(JSON.parse(output)["results"].map { |result| result["id"] }).to include("discovery_complete")
+      expect(status.exitstatus).to eq(2)
     end
 
     it "exits 1 when a portfolio path cannot be read, and 2 when a member needs a human" do

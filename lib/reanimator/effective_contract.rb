@@ -57,7 +57,10 @@ module Reanimator
 
     # The minimal, owner-facing declaration. This is the target for ordinary
     # configuration (section 05): one lifecycle decision and one profile.
+    # Refuses a contract read in part: an exported profile outranks inference
+    # from then on, so a crash must not be written down as the contract.
     def to_minimal_hash
+      discovery.ensure_complete!("exported")
       {version: ContractFile::CURRENT_VERSION, intent: intent.to_sym, profile: profile.id}
     end
 

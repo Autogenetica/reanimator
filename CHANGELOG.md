@@ -108,6 +108,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   repository's snapshot.
 - **A criterion whose command disappears is policy drift,** not a benign
   rename, so losing the proof behind an obligation can no longer pass quietly.
+- **A detector that crashes blocks the run instead of shrinking the contract.**
+  Discovery still keeps going when one detector raises, but a crash used to
+  drop its facts as if they had never been there: a crashed Rails or gem
+  detector made the profile infer as `generic`, with no required checks, and
+  a failing repository read Alive. The failure now travels with the discovery
+  result (ADR-012). `discover` lists it under "not read"; `baseline` adds a
+  required `discovery_complete` error that no waiver covers and no declared
+  check may reuse, so the run cannot be Alive and exits `2`; `drift`, `drift
+  --record` and `contract --export` refuse a contract read in part (exit
+  `1`); `repair` stops safely; and `support_matrix` names the detector when
+  Bundler or GitHub Actions failed; the `contract` review says it was "read in
+  part". Inputs that made detectors raise for no good reason no longer do: a
+  directory, FIFO or broken symlink where a file was expected reads as
+  absent, a `package.json` that is not an object has no scripts, and a
+  workflow `strategy` written as one expression - or a `.nan` in a matrix -
+  credits nothing rather than crashing.
 
 ## [0.1.0] - 2026-10-28
 

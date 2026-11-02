@@ -20,7 +20,9 @@ module Reanimator
         declared = discovery[:supported_ruby]
 
         graded =
-          if (unread = unreadable_floor(declared))
+          if (failed = failed_detector)
+            result(:missing_evidence, detail: "Reanimator could not read declared support: #{failed}.")
+          elsif (unread = unreadable_floor(declared))
             result(:missing_evidence, detail: "#{unread} Write the floor as a string literal so declared support can be checked.")
           elsif ci.any?
             grade_coverage(ci, declared && Array(declared.value))
@@ -34,6 +36,12 @@ module Reanimator
       end
 
       private
+
+      # A crashed detector leaves no floor or matrix fact behind, which would
+      # otherwise read as "nothing declared" and pass.
+      def failed_detector
+        [Detectors::Bundler, Detectors::GitHubActions].filter_map { |detector| discovery.failure(detector) }.first
+      end
 
       # A workflow Reanimator could not read is named in any verdict short of
       # verified (where it cannot matter), but it does not soften the verdict: the readable workflows decide, so a

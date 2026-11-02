@@ -102,7 +102,10 @@ module Reanimator
       # whatever exclude: removes, plus include: entries - the order Actions
       # applies them in. Values are kept as the workflow wrote them.
       def matrix_rubies(job)
-        matrix = job.dig("strategy", "matrix")
+        # A strategy written as one expression is read nowhere, so it credits
+        # nothing - Reanimator under-credits rather than guesses.
+        strategy = job["strategy"]
+        matrix = strategy["matrix"] if strategy.is_a?(Hash)
         return [] unless matrix.is_a?(Hash)
 
         (listed_rubies(matrix) + included_rubies(matrix)).map { |value| ruby_label(value) }
@@ -183,7 +186,9 @@ module Reanimator
       # and neither is an expression such as ${{ matrix.ruby }}, whose value
       # only exists while the workflow runs.
       def scalars(value)
-        Array(value).select { |item| item.is_a?(Numeric) || (item.is_a?(String) && !item.include?("${{")) }
+        Array(value).select do |item|
+          (item.is_a?(Numeric) && item.finite?) || (item.is_a?(String) && !item.include?("${{"))
+        end
       end
 
       # Actions renders a YAML number the way JSON would: 3.0 becomes "3",

@@ -19,6 +19,12 @@ module Reanimator
   # ({EgressControl}). A posture that denies egress either runs every command
   # in an empty network namespace or refuses to execute - never unprotected.
   class BaselineRunner
+    # The criterion a run reports when a detector crashed - see
+    # #incomplete_discovery.
+    DISCOVERY_COMPLETE = AcceptanceCriterion.new(
+      id: :discovery_complete, claim: "Reanimator read the whole repository.", evaluator: :discovery
+    )
+
     attr_reader :contract, :execute, :timeout
 
     def initialize(contract, execute: false, timeout: nil, now: nil)
@@ -48,7 +54,7 @@ module Reanimator
           timeout: timeout, execution_root: execution_root, egress: egress
         ).call
       end
-      results = apply_waivers(results)
+      results = apply_waivers(results) + incomplete_discovery
 
       Baseline.new(
         contract: contract,
@@ -72,6 +78,18 @@ module Reanimator
         waiver = contract.waiver_for(result.criterion.id)
         waiver ? result.accepted_via(waiver) : result
       end
+    end
+
+    # A detector that crashed leaves facts missing that the contract was built
+    # from - a profile inferred without them may carry fewer obligations, and
+    # a pass against those is no proof. So the failure is itself a required,
+    # unwaivable error: the run cannot be Alive, and a human is told.
+    def incomplete_discovery
+      discovery = contract.discovery
+      return [] if discovery.complete?
+
+      [CriterionResult.new(criterion: DISCOVERY_COMPLETE, status: :error,
+        detail: "#{discovery.failure_summary}; the contract may be missing obligations.")]
     end
 
     # Execution requires both the per-run request and the global allowance.

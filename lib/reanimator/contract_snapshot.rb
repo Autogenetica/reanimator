@@ -56,6 +56,9 @@ module Reanimator
     # @return [ContractSnapshot]
     def self.of(contract, taken_at: Time.now)
       discovery = contract.discovery
+      # A contract read in part would record a crash as a policy change, or
+      # compare as one - neither is a decision anyone made.
+      discovery.ensure_complete!("recorded or compared")
 
       new(
         repository: contract.repository.full_name,

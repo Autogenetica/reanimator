@@ -138,9 +138,9 @@ module Reanimator
         return unless body
 
         require "json"
-        scripts = JSON.parse(body).fetch("scripts", {})
-        script = scripts[name]
-        return unless script
+        package = JSON.parse(body)
+        scripts = package["scripts"] if package.is_a?(Hash)
+        return unless scripts.is_a?(Hash) && scripts[name]
 
         # Prefer the yarn/npm indirection so the discovered command is portable.
         repository.exist?("yarn.lock") ? "yarn #{name}" : "npm run #{name}"

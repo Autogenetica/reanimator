@@ -22,6 +22,10 @@ module Reanimator
 
     # @return [Run]
     def run
+      # Checked before anything executes: nothing is repaired against a
+      # contract that may be missing the obligation the repair must keep.
+      return record(:safe_stop, reason: incomplete_reason) unless @contract.discovery.complete?
+
       pre = BaselineRunner.new(@contract, execute: true).run
       # A baseline that never ran has no failures to find; reading that as
       # "all required criteria pass" would turn a refusal into a clean bill.
@@ -116,6 +120,10 @@ module Reanimator
     def unexecuted_reason(pre)
       why = pre.execution_refused? ? pre.egress.reason : "execution is disabled (allow_execution is false)"
       "Repair needs an executed baseline, and none ran: #{why}."
+    end
+
+    def incomplete_reason
+      "Repair needs the whole contract, and discovery did not finish: #{@contract.discovery.failure_summary}."
     end
 
     def resolved?(target, pre, post)
