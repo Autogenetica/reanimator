@@ -291,6 +291,7 @@ RSpec.describe "escalation delivery" do
       {
         "send" => "  s.send(:required_ruby_version=, \">= 3.1\")\n",
         "send with a string" => "  s.public_send(\"required_ruby_version=\", \">= 3.1\")\n",
+        "send with adjacent literals" => "  s.public_send(\"required_\" \"ruby_version=\", \">= 3.1\")\n",
         "instance_variable_set" => "  s.instance_variable_set(:@required_ruby_version, Gem::Requirement.new(\">= 3.1\"))\n",
         "or-assign" => "  s.required_ruby_version ||= \">= 3.1\"\n",
         "and-assign" => "  s.required_ruby_version &&= \">= 3.1\"\n",
@@ -345,7 +346,7 @@ RSpec.describe "escalation delivery" do
       it "is read through each way a gemspec names a local file" do
         {
           "require_relative" => ["require_relative './gemspec'", "gemspec.rb"],
-          "load" => ["load 'gemspec.rb'", "gemspec.rb"],
+          "Kernel.load" => ["Kernel.load 'gemspec.rb'", "gemspec.rb"],
           "require from lib" => ["require 'widget/gemspec'", "lib/widget/gemspec.rb"],
           "expand_path from __dir__" => ["require File.expand_path('gemspec', __dir__)", "gemspec.rb"],
           "expand_path from __FILE__" => ["require File.expand_path('../lib/common', __FILE__)", "lib/common.rb"],
@@ -447,7 +448,7 @@ RSpec.describe "escalation delivery" do
 
         cycle = gemspec_loading("require_relative 'a'").merge("a.rb" => "require_relative 'b'\n", "b.rb" => "require_relative 'a'\n")
         commented = gemspec_loading("# was: require 'x'; require_relative 'nowhere'")
-        exact = gemspec_loading("load 'gemspec.common'").merge("gemspec.common" => common)
+        exact = gemspec_loading("Kernel.load 'gemspec.common'").merge("gemspec.common" => common)
         expect([cycle, commented].map { |files| floor_in(files).value(:supported_ruby_unreadable) }).to eq([nil, nil])
         expect(floor_in(exact).value(:supported_ruby)).to eq([">= 3.2"])
       end
@@ -470,10 +471,10 @@ RSpec.describe "escalation delivery" do
         invalid = gemspec_loading("require_relative 'gemspec'").merge("gemspec.rb" => "MARK = \"\xFF\"\n#{common}".b)
         expect(floor_in(invalid).value(:supported_ruby)).to eq([">= 3.2"])
 
-        repo = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(gemspec_loading("load 'pipe'")))
+        repo = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(gemspec_loading("Kernel.load 'pipe'")))
         File.mkfifo(File.join(repo, "pipe"))
         discovered = Timeout.timeout(5) { Reanimator.discover(repo) }
-        expect(discovered.value(:supported_ruby_unreadable)).to include("load 'pipe'")
+        expect(discovered.value(:supported_ruby_unreadable)).to include("Kernel.load 'pipe'")
       end
 
       it "treats a file Ruby could not parse as unreadable" do
@@ -485,10 +486,9 @@ RSpec.describe "escalation delivery" do
         {
           "second load after ;" => ["require_relative 'a'; require_relative 'gemspec'", {"a.rb" => ""}],
           "parentheses" => ["require_relative('gemspec')", {}],
-          "Kernel.load" => ["Kernel.load 'gemspec.rb'", {}],
-          "load of a built path, as named" => ["load File.expand_path('gemspec.common', __dir__)", {"gemspec.common" => common}],
-          "a modifier Ruby may skip" => ["require_relative 'gemspec' if false", {}],
-          "load from lib/ before the root" => ["load 'gemspec.rb'", {"lib/gemspec.rb" => common, "gemspec.rb" => common.sub("3.2", "3.3")}]
+          "self.require_relative" => ["self.require_relative 'gemspec'", {}],
+          "load of a built path, as named" => ["Kernel.load File.expand_path('gemspec.common', __dir__)", {"gemspec.common" => common}],
+          "a modifier Ruby may skip" => ["require_relative 'gemspec' if false", {}]
         }.each do |shape, (load, extra)|
           files = gemspec_loading(load).merge("gemspec.rb" => common).merge(extra)
           expect(floor_in(files).value(:supported_ruby)).to eq([">= 3.2"]), shape
@@ -505,11 +505,21 @@ RSpec.describe "escalation delivery" do
         end
       end
 
-      it "reads moderate nesting, and refuses a file too deep or too large to parse safely" do
+      it "stops a parse that does not finish in time" do
+        stub_const("Reanimator::FloorReader::PARSE_SECONDS", 0.5)
+        allow_any_instance_of(Reanimator::FloorReader).to receive(:parse_file) { sleep 30 }
+        started = Time.now
+        expect(floor_in({}).value(:supported_ruby_unreadable)).to eq("it could not be parsed safely")
+        expect(Time.now - started).to be < 10
+      end
+
+      it "survives input that overflows the parser, however often, and refuses a file too large" do
         floor = "Gem::Specification.new { |s| s.required_ruby_version = '>= 3.1' }\n"
-        nested = ->(depth) { "x = #{"[" * depth}#{"]" * depth}\n#{floor}" }
-        expect(floor_in("widget.gemspec" => nested.call(900)).value(:supported_ruby)).to eq([">= 3.1"])
-        expect(floor_in("widget.gemspec" => nested.call(5000)).value(:supported_ruby_unreadable)).to eq("it is nested too deeply to read")
+        deep = "x = #{"!" * 30_000}1\n#{floor}"
+        repo = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge("a.gemspec" => deep, "b.gemspec" => deep))
+        expect(Reanimator.discover(repo).value(:supported_ruby_unreadable)).to match(/nested too deeply|parsed safely/)
+
+        expect(floor_in("widget.gemspec" => "x = #{"[" * 5000}#{"]" * 5000}\n#{floor}").value(:supported_ruby)).to eq([">= 3.1"])
         expect(floor_in("widget.gemspec" => "#{"# padding\n" * 30_000}#{floor}").value(:supported_ruby_unreadable))
           .to eq("it is too large to read")
       end
@@ -536,7 +546,15 @@ RSpec.describe "escalation delivery" do
 
         {
           "a path that is not normal" => ["require 'widget/../widget/version'", {"lib/widget/version.rb" => common}],
-          "a loaded gemspec" => ["Gem::Specification.load('base.gemspec')", {}]
+          "a loaded gemspec" => ["Gem::Specification.load('base.gemspec')", {}],
+          "a bare load, which in a gemspec loads a gemspec" => ["load 'gemspec.rb'", {"gemspec.rb" => common}],
+          "a name held in lib/ and at the root" => ["Kernel.load 'gemspec.rb'", {"lib/gemspec.rb" => common, "gemspec.rb" => common}],
+          "a name held only outside lib/" => ["require 'gemspec'", {"gemspec.rb" => common}],
+          "a name held twice" => ["require 'widget/common'", {"lib/widget/common.rb" => common, "support/widget/common.rb" => common}],
+          "a load of a name not held" => ["Kernel.load 'nowhere.rb'", {}],
+          "a require of ~, held in lib/" => ["require '~common'", {"lib/~common.rb" => common}],
+          "eval reached by name" => ["send(:eval, File.read('gemspec.rb'))", {}],
+          "a template given a binding" => ["ERB.new(File.read('t.erb')).result(binding)", {}]
         }.each do |shape, (load, extra)|
           expect(floor_in(gemspec_loading(load).merge(extra)).value(:supported_ruby_unreadable)).to include(load), shape
         end

@@ -63,15 +63,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   named for the floor, code run from a string — makes the floor unreadable,
   reported as missing evidence asking for a literal, never read as "no
   floor". Loads are followed wherever they appear: `require_relative`,
-  `load`, `autoload`, a `require` found under `lib/` (unless the file puts
-  something else on the load path) or from the root, `File.expand_path` from `__dir__` or
-  `__FILE__`, or `File.dirname(__FILE__)`/`__dir__` `+ "/x"`, four levels
-  deep, each file read on its own as UTF-8 whatever the locale. A load
-  Reanimator cannot follow (a path built at runtime, one leaving the
-  repository or passing through a symlink, a load reached by name, another
-  gemspec loaded) makes the floor unreadable unless the gemspec itself
-  assigns a literal floor, and so does a file it cannot read or parse, or
-  one too large or deeply nested to parse safely. Across 1,397 installed
+  `Kernel.load`, `autoload`, `File.expand_path` from `__dir__` or
+  `__FILE__`, `File.dirname(__FILE__)`/`__dir__` `+ "/x"`, and a bare
+  `require` of a name the repository holds only as `lib/<name>` - four
+  levels deep, each file read on its own as UTF-8 whatever the locale. A
+  load Reanimator cannot follow (a path built at runtime, one leaving the
+  repository or passing through a symlink, a name held anywhere else, a
+  load reached by name, a bare `load` in the gemspec, which loads another
+  gemspec) makes the floor unreadable unless the gemspec itself assigns a
+  literal floor, and so does a file it cannot read or parse. Each file is
+  parsed in a forked child, so input that overflows the parser makes only
+  that file's floor unreadable instead of ending the run. Across 1,397 installed
   gemspecs, the reader never gave a higher floor than Ruby nor "no floor"
   where Ruby had one; six gems read as unreadable. A detector that overflows
   the stack is now recorded as a discovery failure like any other crash.
