@@ -79,14 +79,14 @@ module Reanimator
       # The gemspec followed by the local files it loads, read as one, so a
       # floor set in a shared file is seen rather than missing.
       def with_loaded_files(body)
-        loaded = body.scan(LOADED_FILE).flatten.filter_map do |relative|
-          path = relative.end_with?(".rb") ? relative : "#{relative}.rb"
-          path = File.expand_path(path, repository.path)
-          next unless path.start_with?("#{repository.path}/") && File.file?(path)
+        ([body] + body.scan(LOADED_FILE).flatten.filter_map { |relative| local_file(relative) }).join("\n")
+      end
 
-          File.read(path)
-        end
-        ([body] + loaded).join("\n")
+      # The contents of a repository file named by a load path, or nil when it
+      # is missing or outside the repository.
+      def local_file(relative)
+        path = File.expand_path(relative.end_with?(".rb") ? relative : "#{relative}.rb", repository.path)
+        File.read(path) if path.start_with?("#{repository.path}/") && File.file?(path)
       end
 
       # The requirements a gemspec declares, and the first line Reanimator
