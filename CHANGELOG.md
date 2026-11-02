@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-02
+
 ### Added
 
 - **Escalation delivery** (section 16). `baseline`, `portfolio` and `repair` now
@@ -371,5 +373,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `first_failing_required_criterion`, `result_for`, and `verified_required_ids`,
   removing duplicated result-digging from the repair flow and reporters.
 
-[Unreleased]: https://github.com/Autogenetica/reanimator/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Autogenetica/reanimator/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Autogenetica/reanimator/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Autogenetica/reanimator/releases/tag/v0.1.0
