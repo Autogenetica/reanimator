@@ -139,8 +139,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   dangling top-level link crashed `--execute` outright. Links are now copied
   as links, and any link that leads out of the copy - absolute, climbing past
   its root, or through another link, even one that dangles until a check
-  writes through it into the original tree - is left out, and the run warns
-  which links it left out.
+  writes through it into the original tree - is left out, and so is one
+  whose path cannot be resolved; the run warns which links it left out. A
+  monorepo member's link to a sibling outside the repository root, such as
+  `vendor/shared -> ../../shared`, is left out too.
 
 ## [0.1.0] - 2026-10-28
 

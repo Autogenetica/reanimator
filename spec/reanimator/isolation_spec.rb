@@ -22,15 +22,29 @@ RSpec.describe Reanimator::Isolation do
       "build" => File.join(root, "build"), # absolute, and not there yet: a write through it would reach the original
       "gone" => "../not-there-yet",
       "home" => "~/a",
-      "user" => "~nosuchuser/x"
+      "user" => "~nosuchuser/x", # a missing directory, not a home: no telling where a write would land
+      "l" => ".",
+      "sneaky" => "#{"l/" * 30}#{"../" * 30}#{root.delete_prefix("/")}/PWNED", # inside as written, out in fact
+      "loop_a" => "loop_b",
+      "loop_b" => "loop_a",
+      "not_a_dir" => "docs/README.md/x"
     }.each { |link, target| File.symlink(target, File.join(root, link)) }
 
     described_class.copy(root) do |copy|
-      expect(links_in(copy)).to contain_exactly("README.md", "escape", "dangling", "home", "user")
+      expect(links_in(copy)).to contain_exactly("README.md", "escape", "dangling", "home", "l")
       expect(File.read(File.join(copy, "README.md"))).to eq("inside")
       expect(File.directory?(File.join(copy, "spec"))).to be(true)
     end
-    expect(Reanimator.logger).to have_received(:warn).with(/Left 8 link\(s\) out .*\.github\/x\/out/)
+    expect(Reanimator.logger).to have_received(:warn).with(/Left 13 link\(s\) out .*\.github\/x\/out/)
+    expect(File.exist?(File.join(root, "PWNED"))).to be(false)
+  end
+
+  it "leaves no copy behind when interrupted" do
+    allow(FileUtils).to receive(:cp_r).and_raise(Interrupt)
+    before = Dir.glob(File.join(Dir.tmpdir, "reanimator-iso*"))
+
+    expect { described_class.copy(make_repo(files: {"a" => "x"})) { nil } }.to raise_error(Interrupt)
+    expect(Dir.glob(File.join(Dir.tmpdir, "reanimator-iso*"))).to match_array(before)
   end
 
   it "leaves no copy behind when copying fails" do

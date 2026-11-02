@@ -46,8 +46,9 @@ module Reanimator
 
     # Removes every link in the copy that leads out of it: an absolute
     # target, a relative one that climbs past the root, or one whose real
-    # path - through other links - lies outside. Every link is judged before
-    # any is removed. A link inside the copy, even a dangling one, stays.
+    # path - through other links - lies outside, or cannot be found. Every
+    # link is judged before any is removed. A link to a missing file inside
+    # the copy stays.
     # @return [Array<String>] the copy-relative paths of the links removed
     def drop_links_out(destination)
       top = File.realpath(destination)
@@ -57,16 +58,17 @@ module Reanimator
     end
 
     # Judged as written first - with File.absolute_path, which keeps a ~ as
-    # the name it is - so a dangling link out, which has no real path yet, is
-    # caught; then by its real path, for a link that leads out through
-    # another. A target that cannot be judged leads out.
+    # the name it is - then by its real path through every other link, which
+    # File.realdirpath finds even when the final file does not exist yet: a
+    # link can look inside as written (l/l/../../x with l -> .) and still
+    # climb out. A link whose path cannot be resolved at all - a loop, a
+    # missing directory, a file used as one - leads out, since nothing shows
+    # where a write through it would land.
     def leads_out?(link, top)
       inside = ->(path) { path == top || path.start_with?("#{top}/") }
       return true unless inside.call(File.absolute_path(File.readlink(link), File.dirname(link)))
 
-      !inside.call(File.realpath(link))
-    rescue Errno::ENOENT, Errno::ELOOP
-      false # dangling, or a loop, inside the copy: nothing outside to reach
+      !inside.call(File.realdirpath(link))
     rescue SystemCallError, ArgumentError, EncodingError
       true
     end
@@ -76,7 +78,8 @@ module Reanimator
       return if dropped.empty?
 
       Reanimator.logger.warn(
-        "Left #{dropped.size} link(s) out of the disposable copy because they lead outside the repository: #{dropped.join(", ")}"
+        "Left #{dropped.size} link(s) out of the disposable copy because they lead outside the repository " \
+        "or cannot be resolved: #{dropped.join(", ")}"
       )
     end
   end
