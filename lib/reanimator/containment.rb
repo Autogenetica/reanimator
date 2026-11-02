@@ -10,10 +10,12 @@ module Reanimator
 
     # @param root [String] the repository root
     # @param path [String] an absolute path under the root, as written
-    # @return [Boolean] whether its real path lies inside the root's
+    # @return [Boolean] whether its real path lies inside the root's - found
+    #   with File.realdirpath, so a link to a file not written yet is judged
+    #   by where that file would be
     def inside?(root, path)
       real_root = File.realpath(root)
-      real = File.realpath(path)
+      real = File.realdirpath(path)
       real == real_root || real.start_with?("#{real_root}/")
     rescue SystemCallError
       false
@@ -25,7 +27,8 @@ module Reanimator
       return unless File.symlink?(path) || File.exist?(path)
       return if inside?(root, path)
 
-      raise ContractError, "#{what} links outside the repository, so it is not this repository's own."
+      raise ContractError,
+        "#{what} in #{root} leads outside the repository or does not resolve, so it is not this repository's own."
     end
   end
 end

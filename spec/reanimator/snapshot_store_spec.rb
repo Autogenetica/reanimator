@@ -33,10 +33,10 @@ RSpec.describe Reanimator::SnapshotStore do
       File.symlink(outside, File.join(repository.path, ".reanimator-snapshot.json")) # dangling: writing would create it
       store = described_class.new
 
-      expect { store.save(snapshot_of(repository), repository) }.to raise_error(Reanimator::ContractError, /links outside/)
+      expect { store.save(snapshot_of(repository), repository) }.to raise_error(Reanimator::ContractError, /leads outside/)
       expect(File.exist?(outside)).to be(false)
       File.write(outside, "{}")
-      expect { store.load(repository) }.to raise_error(Reanimator::ContractError, /links outside/)
+      expect { store.load(repository) }.to raise_error(Reanimator::ContractError, /leads outside/)
     end
   end
 

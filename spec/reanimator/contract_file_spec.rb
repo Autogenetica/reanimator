@@ -15,7 +15,7 @@ RSpec.describe Reanimator::ContractFile do
     File.write(outside, "version: 1\nintent: retire\n")
     linked_out = make_repo
     File.symlink(outside, File.join(linked_out, ".reanimator.yml"))
-    expect { described_class.load(linked_out) }.to raise_error(Reanimator::ContractError, /links outside/)
+    expect { described_class.load(linked_out) }.to raise_error(Reanimator::ContractError, /leads outside/)
 
     within = make_repo(files: {"config/reanimator.yml" => "version: 1\nintent: retire\n"})
     File.symlink("config/reanimator.yml", File.join(within, ".reanimator.yml"))
