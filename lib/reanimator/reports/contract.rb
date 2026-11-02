@@ -30,10 +30,10 @@ module Reanimator
       # A contract built without some detector's facts may be missing
       # obligations, so the review says so before showing what it has.
       def incomplete_section
-        failures = @contract.discovery.failures
-        return if failures.empty?
+        discovery = @contract.discovery
+        return if discovery.complete?
 
-        "Read in part: #{failures.join("; ")}. This contract may be missing obligations."
+        "Read in part: #{discovery.failure_summary}. This contract may be missing obligations."
       end
 
       def autonomy_section

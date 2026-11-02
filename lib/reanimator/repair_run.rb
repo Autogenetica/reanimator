@@ -123,7 +123,7 @@ module Reanimator
     end
 
     def incomplete_reason
-      "Repair needs the whole contract, and discovery did not finish: #{@contract.discovery.failures.join("; ")}."
+      "Repair needs the whole contract, and discovery did not finish: #{@contract.discovery.failure_summary}."
     end
 
     def resolved?(target, pre, post)

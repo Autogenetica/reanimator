@@ -22,12 +22,15 @@ module Reanimator
 
     def complete? = failures.empty?
 
+    # Every failure in one phrase, e.g. "the Bundler detector failed (...)".
+    def failure_summary = failures.join("; ")
+
     # Raises unless every detector ran: a contract read in part must not be
     # recorded, compared or exported as if it were whole.
     def ensure_complete!(use)
       return if complete?
 
-      raise DiscoveryIncomplete, "#{repository&.full_name}: #{failures.join("; ")}, so its contract was read in part and cannot be #{use}."
+      raise DiscoveryIncomplete, "#{repository&.full_name}: #{failure_summary}, so its contract was read in part and cannot be #{use}."
     end
 
     # The failure of this detector, or nil when it ran.
