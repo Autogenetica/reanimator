@@ -116,6 +116,7 @@ module Reanimator
       def each_source(gemspec)
         unfollowed, seen = nil, Set.new
         start = real_path(repository.absolute(gemspec))
+        linked = start != File.join(root, gemspec)
         pending = [[start, 0]]
         until pending.empty?
           file, depth = pending.shift
@@ -130,7 +131,7 @@ module Reanimator
           next if loads.empty?
 
           # A symlinked gemspec's loads resolve from where the link sits.
-          if file == start && start != File.join(root, gemspec)
+          if linked && file == start
             unfollowed ||= "it is a symlink, so the files it loads cannot be placed"
             next
           end
