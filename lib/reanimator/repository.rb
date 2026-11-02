@@ -61,12 +61,34 @@ module Reanimator
     # @return [Boolean] whether a repository-relative path exists
     def exist?(relative) = File.exist?(absolute(relative))
 
-    # @return [Array<String>] repository-relative paths matching a glob
+    # @return [Array<String>] repository-relative paths matching a glob.
+    #   Globbed from the root rather than trimmed from absolute paths: on a
+    #   case-insensitive filesystem the matches come back in their real case,
+    #   which a root given in another case would not trim.
+    #   Globbed evidence comes from the repository or not at all, so a match
+    #   is kept only when its real path lies inside the root's: glob syntax is too
+    #   rich to judge by the pattern - braces, escapes and a symlink can each
+    #   lead out - so the matches themselves are judged.
     def glob(pattern)
-      Dir.glob(File.join(path, pattern), File::FNM_DOTMATCH)
-        .map { |absolute| absolute.delete_prefix("#{path}/") }
-        .sort
+      Dir.glob(pattern, File::FNM_DOTMATCH, base: path).select { |match| inside?(match) }.sort
+    rescue ArgumentError # a pattern Ruby refuses, such as one with a NUL byte
+      []
     end
+
+    # A match written inside the root - neither absolute nor through `..` -
+    # whose real path is inside it too.
+    def inside?(match)
+      return false if match.start_with?("/") || match.split("/").include?("..")
+
+      real = File.realpath(match, path)
+      real == real_root || real.start_with?("#{real_root}/")
+    rescue SystemCallError
+      false
+    end
+    private :inside?
+
+    def real_root = @real_root ||= File.realpath(path)
+    private :real_root
 
     # @return [Boolean] whether any path matches the glob
     def any?(pattern) = !glob(pattern).empty?

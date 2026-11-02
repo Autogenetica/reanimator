@@ -111,6 +111,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   absent, a `package.json` that is not an object has no scripts, and a
   workflow `strategy` written as one expression - or a `.nan` in a matrix -
   credits nothing rather than crashing.
+- **A repository named in another case is read in full.** On a
+  case-insensitive filesystem, `baseline /path/SRC/repo` for a repository at
+  `/path/src/repo` globbed every file back in its real case, failed to trim
+  the root off, and so lost each gemspec: the declared floor vanished and
+  `support_matrix` reported nothing to verify. Paths are now globbed from the
+  root itself, which also reads a root whose name holds glob characters
+  (`br[1]`) - before, it matched nothing there. Every match must now lie
+  inside the repository, judged on what the glob returned rather than on the
+  pattern: an absolute or `..` path, a brace alternative or escape leading
+  out, or a symlink to somewhere outside no longer counts, so a declared
+  `documentation_check` target such as `/etc/hosts`, `{/etc/hosts,x}` or
+  `../other/README` cannot be satisfied by a file outside the repository. A
+  pattern Ruby refuses, such as one with a NUL byte, matches nothing instead
+  of ending the run.
 
 ## [0.1.0] - 2026-10-28
 
