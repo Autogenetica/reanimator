@@ -62,12 +62,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   makes the floor unreadable, reported as missing evidence asking for a
   literal, never read as "no floor". The floor is also read from the local
   files a gemspec loads — `require_relative`, `load`, a `require` found under
-  `lib/`, or `File.expand_path` from `__dir__` or `__FILE__` — following
-  nested loads four levels deep, each file read on its own as UTF-8 whatever
-  the locale. When no floor is found, a load Reanimator cannot follow (a path
-  built at runtime, or one leaving the repository, symlinks included) or a
-  file it cannot read makes the floor unreadable too. Of 260 installed gem
-  versions with a gemspec, five read as unreadable.
+  `lib/` or from the root, `File.expand_path` from `__dir__` or `__FILE__`, or
+  `File.dirname(__FILE__) +` — following nested loads four levels deep, each
+  file read on its own as UTF-8 whatever the locale. A load Reanimator cannot
+  follow (a path built at runtime, one leaving the repository, symlinks
+  included, or a path Ruby could not use) makes the floor unreadable unless
+  the gemspec itself assigns a literal floor, and so does a file it cannot
+  read. Of 260 installed gem versions with a gemspec, five read as
+  unreadable. ADR-011 records why the floor is read rather than evaluated,
+  and the load shapes the reader still does not follow.
   Exclude keys and values match loosely (case aside, `7.0` as `7`), a job with
   `if: false` is not credited, and — as before — a workflow that only runs on
   manual dispatch is still read. Gemspec requirements written as arrays — on one

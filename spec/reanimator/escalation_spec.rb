@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "open3"
+require "timeout"
 
 # Section 16: an escalation has to reach a human without anyone reading a
 # terminal. The CLI's exit status carries it everywhere; inside GitHub Actions
@@ -338,7 +339,11 @@ RSpec.describe "escalation delivery" do
           "load" => ["load 'gemspec.rb'", "gemspec.rb"],
           "require from lib" => ["require 'widget/gemspec'", "lib/widget/gemspec.rb"],
           "expand_path from __dir__" => ["require File.expand_path('gemspec', __dir__)", "gemspec.rb"],
-          "expand_path from __FILE__" => ["require File.expand_path('../lib/common', __FILE__)", "lib/common.rb"]
+          "expand_path from __FILE__" => ["require File.expand_path('../lib/common', __FILE__)", "lib/common.rb"],
+          "dirname joined" => ["require File.dirname(__FILE__) + '/lib/common'", "lib/common.rb"],
+          "require from the root" => ["require './gemspec'", "gemspec.rb"],
+          "a file named with ~" => ["require_relative '~common'", "~common.rb"],
+          "load of a file named with ~" => ["load '~common.rb'", "~common.rb"]
         }.each do |shape, (load, path)|
           expect(floor_in(gemspec_loading(load).merge(path => common)).value(:supported_ruby)).to eq([">= 3.2"]), shape
         end
@@ -416,6 +421,35 @@ RSpec.describe "escalation delivery" do
         exact = gemspec_loading("load 'gemspec.common'").merge("gemspec.common" => common)
         expect([cycle, commented].map { |files| floor_in(files).value(:supported_ruby_unreadable) }).to eq([nil, nil])
         expect(floor_in(exact).value(:supported_ruby)).to eq([">= 3.2"])
+      end
+
+      it "settles an unfollowed load only with a floor in the gemspec itself" do
+        files = gemspec_loading("require_relative 'gemspec'\nrequire File.join(__dir__, 'platform')").merge("gemspec.rb" => common)
+        expect(floor_in(files).value(:supported_ruby_unreadable)).to include("File.join(__dir__, 'platform')")
+      end
+
+      it "treats a path Ruby could not use as unfollowed, never as a crash" do
+        allow(Reanimator.logger).to receive(:warn)
+        {"home directory" => "load '~nosuchuser/x.rb' if false", "null byte" => "require_relative \"a\u0000b\" if false"}.each do |shape, load|
+          files = {"widget.gemspec" => "#{load}\nGem::Specification.new { |s| s.required_ruby_version = '>= 3.1' }\n"}
+          expect(floor_in(files).value(:supported_ruby)).to eq([">= 3.1"]), shape
+        end
+        expect(Reanimator.logger).not_to have_received(:warn)
+      end
+
+      it "reads a loaded file with invalid bytes, and never opens a FIFO it names" do
+        invalid = gemspec_loading("require_relative 'gemspec'").merge("gemspec.rb" => "MARK = \"\xFF\"\n#{common}".b)
+        expect(floor_in(invalid).value(:supported_ruby)).to eq([">= 3.2"])
+
+        repo = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(gemspec_loading("load 'pipe'")))
+        File.mkfifo(File.join(repo, "pipe"))
+        discovered = Timeout.timeout(5) { Reanimator.discover(repo) }
+        expect(discovered.value(:supported_ruby_unreadable)).to include("load 'pipe'")
+      end
+
+      it "treats a floor after a =begin never closed as unreadable" do
+        files = {"widget.gemspec" => "Gem::Specification.new do |s|\n=begin\n  s.required_ruby_version = '>= 2.7'\nend\n"}
+        expect(floor_in(files).value(:supported_ruby_unreadable)).to include("sits after __END__ or inside =begin")
       end
 
       it "keeps a literal floor in the gemspec when another load cannot be followed" do
