@@ -150,29 +150,32 @@ module Reanimator
       # Where a load leads: a repository file, :library for a require Ruby
       # finds among installed gems, or nil when Reanimator cannot follow it -
       # a path built at runtime, or one outside the repository.
-      # Paths are resolved as Ruby does, with File.absolute_path: a leading ~
-      # names no home directory, and a path Ruby could not use is unfollowed.
       def load_target(kind, argument, file)
-        expanded = EXPANDED_PATH.match(argument)
-        joined = argument[JOINED_PATH, 1]
         literal = argument[LITERAL_PATH, 1]
-        path =
-          if expanded
-            File.absolute_path(expanded[1], (expanded[2] == "__FILE__") ? file : File.dirname(file))
-          elsif joined
-            File.absolute_path(joined, File.dirname(file))
-          elsif literal.nil?
-            return
-          elsif kind == "require_relative"
-            File.absolute_path(literal, File.dirname(file))
-          elsif kind == "load" || literal.start_with?("./", "../", "/")
-            File.absolute_path(literal, root)
-          else
-            return repository_file(File.join(root, "lib", ruby_file(literal))) || :library
-          end
-        repository_file((kind == "load") ? path : ruby_file(path))
+        return repository_file(File.join(root, "lib", ruby_file(literal))) || :library if library?(kind, literal)
+
+        path = load_path(kind, argument, file)
+        path && repository_file((kind == "load") ? path : ruby_file(path))
       rescue ArgumentError, EncodingError
         nil
+      end
+
+      # A bare require of a literal name: Ruby searches the load path for it.
+      def library?(kind, literal)
+        kind == "require" && literal && !literal.start_with?("./", "../", "/")
+      end
+
+      # The absolute path a load names, or nil when it is built at runtime.
+      # Paths are resolved as Ruby does, with File.absolute_path: a leading ~
+      # names no home directory, and a path Ruby could not use is unfollowed.
+      def load_path(kind, argument, file)
+        if (expanded = EXPANDED_PATH.match(argument))
+          File.absolute_path(expanded[1], (expanded[2] == "__FILE__") ? file : File.dirname(file))
+        elsif (joined = argument[JOINED_PATH, 1])
+          File.absolute_path(joined, File.dirname(file))
+        elsif (literal = argument[LITERAL_PATH, 1])
+          File.absolute_path(literal, (kind == "require_relative") ? File.dirname(file) : root)
+        end
       end
 
       def ruby_file(path) = path.end_with?(".rb") ? path : "#{path}.rb"
