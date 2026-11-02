@@ -69,10 +69,13 @@ they mean to Ruby.
   `lib/<name>` (a gem's own load path) is followed, and for `load` so is one
   held only at the root; a name held anywhere else, or in more than one
   place, or in another case, is not followed; a name not held at all is a
-  library for `require`. Installed gems (`vendor/bundle`, `.bundle`),
-  `node_modules`, built packages (`pkg/`) and `.git` hold other projects'
-  files and are not searched, so a repository reads the same in CI, where
-  the bundle is often installed inside the checkout, as on a laptop.
+  library for `require`. Gems Bundler installed - anywhere under
+  `ruby/<version>/gems/`, as in `vendor/bundle` or `gemfiles/vendor/bundle`
+  - `.bundle`, `node_modules`, `.git` and the versioned copies `rake build`
+  leaves in `pkg/` hold other projects' files and are not searched, so a
+  repository reads the same in CI, where the bundle is often installed
+  inside the checkout, as on a laptop. Anything else under `pkg/` is the
+  repository's own, and a name held there is not followed.
   A bare `load` in the gemspec itself is `Gem::Specification.load` - the
   gemspec is evaluated in that class - so it loads another gemspec and is not
   followed. `~` is kept or expanded as Ruby does for each. Nested loads are

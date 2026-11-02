@@ -26,9 +26,17 @@ module Reanimator
     # indirectly - by send, method(...).call - so the parse cannot see them.
     INDIRECT_LOADS = (LOADS + %i[autoload]).map(&:to_s).freeze
     INDIRECT_EVALS = (EVALS + %i[binding]).map(&:to_s).freeze
-    # Trees that hold other projects' files - installed gems, packages, built
-    # packages, git's own store - whose names say nothing about this one.
-    NOT_THE_REPOSITORY = %w[vendor/bundle/ .bundle/ node_modules/ pkg/ .git/].freeze
+    # Trees that hold other projects' files, whose names say nothing about
+    # this one: gems installed by Bundler wherever it put them
+    # (ruby/<version>/gems/ under vendor/bundle, gemfiles/vendor/bundle,
+    # vendor/ruby...), Bundler's settings, packages, git's own store, and the
+    # versioned copies `rake build` leaves in pkg/.
+    NOT_THE_REPOSITORY = %r{
+      (?:\A|/)(?:node_modules|\.git)/ |
+      (?:\A|/)ruby/\d+\.\d+\.\d+/(?:gems|bundler/gems|extensions)/ |
+      \A\.bundle/ |
+      \Apkg/[^/]+-\d[^/]*/
+    }x
     # How many levels of loads are followed from a gemspec.
     MAX_LOAD_DEPTH = 4
     # Real gemspecs are a few kilobytes; a file far larger is not parsed.
@@ -53,7 +61,7 @@ module Reanimator
     # owner's own statement, which then settles it.
     # @return [Array(Array<String>, String, nil)]
     def read(gemspec)
-      held_files # indexed once, before any parse is forked, so each child shares it
+      held_names # indexed once, before any parse is forked, so each child shares it
       requirements, own = [], nil
       unfollowed = each_reading(gemspec) do |file, reading|
         return [[], "#{relative(file)} could not be read"] if reading.unread
@@ -115,7 +123,7 @@ module Reanimator
     # stopped so that nothing a file holds can hang the run.
     def in_child
       reader, writer = IO.pipe
-      pid = fork do
+      pid = Process.fork do
         reader.close
         begin
           writer.binmode.write(Marshal.dump(yield))
@@ -134,6 +142,7 @@ module Reanimator
       Marshal.load(data) if $?.success? && !data.empty? # standard:disable Security/MarshalLoad
     ensure
       reader&.close
+      writer&.close unless writer&.closed?
       # A child still running - out of time, or its parent interrupted - is
       # stopped and reaped, never left holding the run's output open.
       if pid
@@ -321,15 +330,22 @@ module Reanimator
     # filesystem ignores too: a require in another case than its file is held
     # - and so not followed - rather than taken for a library.
     def repository_named(name)
-      wanted = name.downcase
-      held_files.select { |path| path.downcase == wanted || path.downcase.end_with?("/#{wanted}") }
+      wanted = name.scrub.downcase
+      held_names.fetch(File.basename(wanted), []).select do |path, folded|
+        folded == wanted || folded.end_with?("/#{wanted}")
+      end.map(&:first)
     end
 
-    # Every name the repository holds, outside trees that hold other
-    # projects. It only decides whether a name is held; a file that is
-    # followed is still held to the repository by repository_file.
-    def held_files
-      @held_files ||= Dir.glob("**/*", File::FNM_DOTMATCH, base: root).reject { |path| path.start_with?(*NOT_THE_REPOSITORY) }
+    # Every path the repository holds, outside trees that hold other
+    # projects, keyed by its base name in lower case - with that folded path
+    # beside it - so each bare name is looked up, not searched for. It only
+    # decides whether a name is held; a file that is followed is still held
+    # to the repository by repository_file.
+    def held_names
+      @held_names ||= Dir.glob("**/*", File::FNM_DOTMATCH, base: root)
+        .reject { |path| path.scrub.match?(NOT_THE_REPOSITORY) }
+        .map { |path| [path, path.scrub.downcase] }
+        .group_by { |_, folded| File.basename(folded) }
     end
 
     # The path File.expand_path("x", __dir__), File.expand_path("../x",

@@ -490,7 +490,16 @@ RSpec.describe "escalation delivery" do
           "self.require_relative" => ["self.require_relative 'gemspec'", {}],
           "a bare load in a loaded file, which is Kernel#load" => ["require_relative 'loader'", {"loader.rb" => "load 'gemspec.rb'\n"}],
           "instance_eval with a block, which runs no string" => ["require_relative 'gemspec'\n''.instance_eval { size }", {}],
-          "a library vendored by the bundle, which is not this repository's" => ["require 'json'\nrequire_relative 'gemspec'", {"vendor/bundle/ruby/3.4.0/gems/json/lib/json.rb" => ""}],
+          "libraries installed where Bundler or npm put them, which are not this repository's" =>
+            ["require 'json'\nrequire_relative 'gemspec'", {
+              "vendor/bundle/ruby/3.4.0/gems/json/lib/json.rb" => "",
+              "gemfiles/vendor/bundle/ruby/3.4.0/gems/json/lib/json.rb" => "",
+              "vendor/ruby/3.4.0/bundler/gems/json/lib/json.rb" => "",
+              "node_modules/json/json.rb" => "",
+              ".bundle/json.rb" => "",
+              ".git/json.rb" => "",
+              "pkg/widget-1.0.0/lib/json.rb" => ""
+            }],
           "load of a built path, as named" => ["Kernel.load File.expand_path('gemspec.common', __dir__)", {"gemspec.common" => common}],
           "a modifier Ruby may skip" => ["require_relative 'gemspec' if false", {}]
         }.each do |shape, (load, extra)|
@@ -509,12 +518,19 @@ RSpec.describe "escalation delivery" do
         end
       end
 
+      it "parses in the process when no child can be forked, and reaps every child it stops" do
+        allow(Process).to receive(:fork).and_raise(Errno::EAGAIN)
+        expect(floor_in(gemspec_loading("require_relative 'gemspec'").merge("gemspec.rb" => common)).value(:supported_ruby))
+          .to eq([">= 3.2"])
+      end
+
       it "stops a parse that does not finish in time" do
         stub_const("Reanimator::FloorReader::PARSE_SECONDS", 0.5)
         allow_any_instance_of(Reanimator::FloorReader).to receive(:parse_file) { sleep 30 }
         started = Time.now
         expect(floor_in({}).value(:supported_ruby_unreadable)).to eq("it could not be parsed safely")
         expect(Time.now - started).to be < 10
+        expect { Process.wait(-1, Process::WNOHANG) }.to raise_error(Errno::ECHILD) # stopped and reaped
       end
 
       it "ends a child whose parse raised quietly, with the file's floor unreadable" do
@@ -529,6 +545,7 @@ RSpec.describe "escalation delivery" do
         expect(File.read(captured.path)).not_to include("boom in the child")
       ensure
         $stderr.reopen(saved) if saved
+        saved&.close
       end
 
       it "reads past a string that is not valid UTF-8" do
@@ -582,6 +599,8 @@ RSpec.describe "escalation delivery" do
           "a binding reached by name" => ["ERB.new(File.read('t.erb')).result(send(:binding))", {}],
           "autoload reached by name" => ["send(:autoload, :Common, './gemspec')", {}],
           "a require whose case differs from its file" => ["require 'Widget/Common'", {"lib/widget/common.rb" => common}],
+          "a file whose case differs from its require" => ["require 'widget/common'", {"lib/Widget/Common.rb" => common}],
+          "a name held only in pkg/ source, not a built copy" => ["require 'core_floor'", {"pkg/core/lib/core_floor.rb" => common}],
           "a template given a binding" => ["ERB.new(File.read('t.erb')).result(binding)", {}]
         }.each do |shape, (load, extra)|
           expect(floor_in(gemspec_loading(load).merge(extra)).value(:supported_ruby_unreadable)).to include(load), shape
