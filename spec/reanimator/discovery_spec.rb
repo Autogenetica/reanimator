@@ -196,7 +196,10 @@ RSpec.describe Reanimator::Discovery do
     repository = Reanimator::Repository.at(File.join(root, "sub"))
 
     expect(Reanimator::Repository.at(root).glob("*.gemspec")).to eq(["widget.gemspec"])
-    expect(%w[/etc/hosts* ../*.gemspec sub/../../*].map { |pattern| repository.glob(pattern) }).to eq([[], [], []])
+    outside = %w[/etc/hosts* ../*.gemspec ./../* {/etc/hosts,x} {..,x}/* \\../* link/*]
+    File.symlink(make_repo(files: {"SECRET" => "x"}), File.join(root, "sub", "link"))
+    expect(outside.to_h { |pattern| [pattern, repository.glob(pattern)] }).to eq(outside.to_h { |pattern| [pattern, []] })
+    expect(repository.glob("a\0b")).to eq([])
   end
 
   it "survives non-UTF-8 files and still detects the ecosystem" do

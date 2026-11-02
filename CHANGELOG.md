@@ -117,10 +117,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the root off, and so lost each gemspec: the declared floor vanished and
   `support_matrix` reported nothing to verify. Paths are now globbed from the
   root itself, which also reads a root whose name holds glob characters
-  (`br[1]`) - before, it matched nothing there. A pattern that leaves the
-  root, absolute or through `..`, matches nothing: a declared
-  `documentation_check` target such as `/etc/hosts` or `../other/README`
-  can no longer be satisfied by a file outside the repository.
+  (`br[1]`) - before, it matched nothing there. Every match must now lie
+  inside the repository, judged on what the glob returned rather than on the
+  pattern: an absolute or `..` path, a brace alternative or escape leading
+  out, or a symlink to somewhere outside no longer counts, so a declared
+  `documentation_check` target such as `/etc/hosts`, `{/etc/hosts,x}` or
+  `../other/README` cannot be satisfied by a file outside the repository. A
+  pattern Ruby refuses, such as one with a NUL byte, matches nothing instead
+  of ending the run.
 
 ## [0.1.0] - 2026-10-28
 
