@@ -35,8 +35,34 @@ RSpec.describe Reanimator::Isolation do
       expect(File.read(File.join(copy, "README.md"))).to eq("inside")
       expect(File.directory?(File.join(copy, "spec"))).to be(true)
     end
-    expect(Reanimator.logger).to have_received(:warn).with(/Left 13 link\(s\) out .*\.github\/x\/out/)
+    expect(Reanimator.logger).to have_received(:warn).with(/Left 13 path\(s\) out .*\.github\/x\/out/)
     expect(File.exist?(File.join(root, "PWNED"))).to be(false)
+  end
+
+  it "leaves out a link that climbs back through another link, which a check could turn into a directory" do
+    allow(Reanimator.logger).to receive(:warn)
+    root = make_repo(files: {"deep/a/b/.keep" => ""})
+    File.symlink(".", File.join(root, "l"))
+    File.symlink("deep/a/b", File.join(root, "tmp"))
+    # Inside as written and in fact - l/tmp is deep/a/b, so this is deep/x.log
+    # - but once a check replaces tmp with a directory it is ../x.log.
+    File.symlink("l/tmp/../../x.log", File.join(root, "out.log"))
+    File.symlink("deep/a/../a/b", File.join(root, "plain_climb"))
+
+    described_class.copy(root) do |copy|
+      expect(links_in(copy)).to contain_exactly("l", "tmp", "plain_climb")
+    end
+  end
+
+  it "leaves out a nested worktree's .git file, which points back at the original repository" do
+    allow(Reanimator.logger).to receive(:warn)
+    root = make_repo(files: {"worktrees/feature/.git" => "gitdir: /original/.git/worktrees/feature\n", "vendor/lib/.git/HEAD" => "ref\n"})
+
+    described_class.copy(root) do |copy|
+      expect(File.exist?(File.join(copy, "worktrees/feature/.git"))).to be(false)
+      expect(File.exist?(File.join(copy, "vendor/lib/.git/HEAD"))).to be(true) # a nested repository of its own
+    end
+    expect(Reanimator.logger).to have_received(:warn).with(%r{worktrees/feature/\.git})
   end
 
   it "leaves no copy behind when interrupted" do

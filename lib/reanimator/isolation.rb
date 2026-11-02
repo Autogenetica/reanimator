@@ -29,7 +29,7 @@ module Reanimator
 
           FileUtils.cp_r(File.join(root, child), File.join(destination, child), dereference_root: false)
         end
-        report_dropped(drop_links_out(destination))
+        report_dropped(drop_links_out(destination) + drop_git_files(destination))
       rescue Exception # standard:disable Lint/RescueException - nothing may leave the copy behind
         FileUtils.remove_entry(destination, true)
         raise
@@ -66,11 +66,39 @@ module Reanimator
     # where a write through it would land.
     def leads_out?(link, top)
       inside = ->(path) { path == top || path.start_with?("#{top}/") }
-      return true unless inside.call(File.absolute_path(File.readlink(link), File.dirname(link)))
+      target = File.readlink(link)
+      return true unless inside.call(File.absolute_path(target, File.dirname(link)))
+      return true if climbs_through_link?(target, File.dirname(link))
 
       !inside.call(File.realdirpath(link))
     rescue SystemCallError, ArgumentError, EncodingError
       true
+    end
+
+    # Removes every nested .git file - a worktree's or a submodule's pointer,
+    # `gitdir: <path>` - from the copy. The top-level .git is never copied,
+    # so each points either back into the original repository, where a git
+    # command run by a check would commit, or nowhere.
+    # @return [Array<String>] the copy-relative paths removed
+    def drop_git_files(destination)
+      Dir.glob("**/.git", File::FNM_DOTMATCH, base: destination)
+        .select { |relative| File.file?(File.join(destination, relative)) && !File.symlink?(File.join(destination, relative)) }
+        .each { |relative| File.delete(File.join(destination, relative)) }
+    end
+
+    # Whether the target, as written, climbs with `..` after passing through
+    # a link. Where it lands then depends on what that link is, and a check
+    # that replaces the link with a plain directory - an ordinary "reset
+    # tmp/" step - would make a target judged inside climb out. Without such
+    # a climb, plain directories cannot change where the path lands.
+    def climbs_through_link?(target, from)
+      through_link = false
+      target.split("/").reject(&:empty?).inject(target.start_with?("/") ? "/" : from) do |path, part|
+        return true if part == ".." && through_link
+
+        File.join(path, part).tap { |next_path| through_link ||= File.symlink?(next_path) }
+      end
+      false
     end
 
     # A link left out changes what a check sees, so the run says so.
@@ -78,8 +106,8 @@ module Reanimator
       return if dropped.empty?
 
       Reanimator.logger.warn(
-        "Left #{dropped.size} link(s) out of the disposable copy because they lead outside the repository " \
-        "or cannot be resolved: #{dropped.join(", ")}"
+        "Left #{dropped.size} path(s) out of the disposable copy because they lead outside the repository " \
+        "or cannot be placed: #{dropped.join(", ")}"
       )
     end
   end

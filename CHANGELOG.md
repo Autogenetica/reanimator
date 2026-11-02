@@ -140,9 +140,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   as links, and any link that leads out of the copy - absolute, climbing past
   its root, or through another link, even one that dangles until a check
   writes through it into the original tree - is left out, and so is one
-  whose path cannot be resolved; the run warns which links it left out. A
-  monorepo member's link to a sibling outside the repository root, such as
-  `vendor/shared -> ../../shared`, is left out too.
+  whose path cannot be resolved, or that climbs back with `..` through
+  another link (which a check replacing that link with a directory would
+  turn outward). Nested `.git` files - a worktree's or submodule's pointer,
+  through which `git commit` in the copy reached the original repository -
+  are left out too, and the run warns which paths it left out. A monorepo
+  member's link to a sibling outside the repository root, such as
+  `vendor/shared -> ../../shared`, is left out as well. This keeps ordinary
+  checks on the repository's own files; it is not isolation - an executed
+  check still runs as the invoking user and can write anywhere it chooses
+  (section 12, not built).
 
 ## [0.1.0] - 2026-10-28
 
