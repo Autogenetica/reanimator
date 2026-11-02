@@ -146,10 +146,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   through which `git commit` in the copy reached the original repository -
   are left out too, and the run warns which paths it left out. A monorepo
   member's link to a sibling outside the repository root, such as
-  `vendor/shared -> ../../shared`, is left out as well. This keeps ordinary
-  checks on the repository's own files; it is not isolation - an executed
-  check still runs as the invoking user and can write anywhere it chooses
-  (section 12, not built).
+  `vendor/shared -> ../../shared`, is left out as well, and so is a Python
+  virtualenv's absolute link to its base interpreter (`.venv/bin/python`), so
+  a check that runs a committed virtualenv fails with the warning naming it.
+  This keeps a committed link or `.git` file from leading ordinary checks out
+  of the repository; it is not isolation - an executed check still runs as
+  the invoking user and can write anywhere it chooses (section 12, not
+  built), and a nested repository's own `.git` directory can still name an
+  outside work tree or object store.
 
 ## [0.1.0] - 2026-10-28
 

@@ -41,12 +41,13 @@ RSpec.describe Reanimator::Isolation do
 
   it "leaves out a link that climbs back through another link, which a check could turn into a directory" do
     allow(Reanimator.logger).to receive(:warn)
-    root = make_repo(files: {"deep/a/b/.keep" => ""})
+    root = make_repo(files: {"deep/a/b/x/.keep" => ""})
     File.symlink(".", File.join(root, "l"))
     File.symlink("deep/a/b", File.join(root, "tmp"))
     # Inside as written and in fact - l/tmp is deep/a/b, so this is deep/x.log
     # - but once a check replaces tmp with a directory it is ../x.log.
     File.symlink("l/tmp/../../x.log", File.join(root, "out.log"))
+    File.symlink("l/tmp/x/../../../y", File.join(root, "later_climb")) # the link is two parts before the ..
     File.symlink("deep/a/../a/b", File.join(root, "plain_climb"))
 
     described_class.copy(root) do |copy|

@@ -93,7 +93,7 @@ module Reanimator
     # a climb, plain directories cannot change where the path lands.
     def climbs_through_link?(target, from)
       through_link = false
-      target.split("/").reject(&:empty?).inject(target.start_with?("/") ? "/" : from) do |path, part|
+      target.split("/").reject(&:empty?).inject(from) do |path, part|
         return true if part == ".." && through_link
 
         File.join(path, part).tap { |next_path| through_link ||= File.symlink?(next_path) }
