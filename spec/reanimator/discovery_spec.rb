@@ -185,6 +185,49 @@ RSpec.describe Reanimator::Discovery do
       .to include("the Bundler detector failed (ArgumentError: boom); its facts are missing.")
   end
 
+  it "reads a repository named in another case, as a case-insensitive filesystem allows" do
+    path = make_repo(files: {"widget.gemspec" => "Gem::Specification.new { |s| s.required_ruby_version = '>= 3.1' }\n"})
+    variant = File.join(File.dirname(path), File.basename(path).swapcase)
+    skip "the filesystem is case-sensitive" unless File.directory?(variant)
+
+    result = Reanimator::Discovery.new(Reanimator::Repository.at(variant)).run
+    expect(result.value(:supported_ruby)).to eq([">= 3.1"])
+    expect(Reanimator::Repository.at(variant).glob("*.gemspec")).to eq(["widget.gemspec"])
+  end
+
+  it "globs only inside the repository, whatever the root's name holds" do
+    root = File.join(make_repo, "br[1]")
+    FileUtils.mkdir_p(File.join(root, "sub"))
+    File.write(File.join(root, "widget.gemspec"), "")
+    repository = Reanimator::Repository.at(File.join(root, "sub"))
+
+    expect(Reanimator::Repository.at(root).glob("*.gemspec")).to eq(["widget.gemspec"])
+    outside = %w[/etc/hosts* ../*.gemspec ./../* {/etc/hosts,x} {..,x}/* \\../* link/*]
+    File.symlink(make_repo(files: {"SECRET" => "x"}), File.join(root, "sub", "link"))
+    # A sibling whose name extends the root's is still outside it.
+    FileUtils.mkdir_p("#{root}/sub-evil")
+    File.write("#{root}/sub-evil/SECRET", "x")
+    File.symlink("../sub-evil/SECRET", File.join(root, "sub", "README"))
+    File.symlink("nowhere", File.join(root, "sub", "BROKEN"))
+    expect(repository.glob("*")).to eq(["."])
+    expect(outside.to_h { |pattern| [pattern, repository.glob(pattern)] }).to eq(outside.to_h { |pattern| [pattern, []] })
+    expect(repository.glob("a\0b")).to eq([])
+  end
+
+  it "does not count a file reached through a symlink out of the repository" do
+    outside = make_repo(files: {"SEC" => "report to x", "dependabot.yml" => "version: 2\n"})
+    root = make_repo(files: {"README.md" => "# w", "docs/SECURITY.md" => "inside"})
+    File.symlink(File.join(outside, "SEC"), File.join(root, "SECURITY.md"))
+    File.symlink(outside, File.join(root, ".github"))
+    File.symlink("docs/SECURITY.md", File.join(root, "POLICY.md"))
+    repository = Reanimator::Repository.at(root)
+
+    expect(%w[SECURITY.md .github .github/dependabot.yml].map { |file| [repository.exist?(file), repository.read(file)] })
+      .to eq([[false, nil], [false, nil], [false, nil]])
+    expect([repository.exist?("POLICY.md"), repository.read("POLICY.md")]).to eq([true, "inside"])
+    expect(repository.exist?("../#{File.basename(outside)}/SEC")).to be(false)
+  end
+
   it "survives non-UTF-8 files and still detects the ecosystem" do
     path = make_repo(files: {"widget.gemspec" => "x"})
     # A Gemfile with an invalid byte would otherwise make the detector's regex

@@ -26,6 +26,18 @@ RSpec.describe Reanimator::SnapshotStore do
       store.save(snapshot_of(repository), repository)
       expect(store.load(repository).repository).to eq(repository.full_name)
     end
+
+    it "neither reads nor writes through a snapshot linked from outside the repository" do
+      repository = repository_at("widget")
+      outside = File.join(make_repo, "snap.json")
+      File.symlink(outside, File.join(repository.path, ".reanimator-snapshot.json")) # dangling: writing would create it
+      store = described_class.new
+
+      expect { store.save(snapshot_of(repository), repository) }.to raise_error(Reanimator::ContractError, /leads outside/)
+      expect(File.exist?(outside)).to be(false)
+      File.write(outside, "{}")
+      expect { store.load(repository) }.to raise_error(Reanimator::ContractError, /leads outside/)
+    end
   end
 
   describe "a portfolio-side directory" do

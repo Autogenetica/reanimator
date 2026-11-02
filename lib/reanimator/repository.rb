@@ -58,15 +58,46 @@ module Reanimator
     # @return [String] absolute path for a repository-relative path
     def absolute(relative) = File.join(path, relative)
 
-    # @return [Boolean] whether a repository-relative path exists
-    def exist?(relative) = File.exist?(absolute(relative))
+    # @return [Boolean] whether a repository-relative path exists inside the
+    #   repository - one reached through a symlink out of it does not
+    def exist?(relative) = File.exist?(absolute(relative)) && inside?(relative)
 
-    # @return [Array<String>] repository-relative paths matching a glob
+    # @return [Array<String>] repository-relative paths matching a glob.
+    #   Globbed from the root rather than trimmed from absolute paths: on a
+    #   case-insensitive filesystem the matches come back in their real case,
+    #   which a root given in another case would not trim.
+    #   Evidence comes from the repository or not at all, so a match is kept
+    #   only when its real path lies inside the root's: glob syntax is too
+    #   rich to judge by the pattern - braces, escapes and a symlink can each
+    #   lead out - so the matches themselves are judged.
     def glob(pattern)
-      Dir.glob(File.join(path, pattern), File::FNM_DOTMATCH)
-        .map { |absolute| absolute.delete_prefix("#{path}/") }
-        .sort
+      Dir.glob(pattern, File::FNM_DOTMATCH, base: path).select { |match| inside?(match) }.sort
+    rescue ArgumentError # a pattern Ruby refuses, such as one with a NUL byte
+      []
     end
+
+    # Whether a path is written inside the root - neither absolute nor
+    # through `..` - and its real path is inside it too. exist?, read and
+    # glob all go through it, so a symlink in the repository cannot make a
+    # file outside it count as evidence; Isolation's copy keeps the same line
+    # for executed checks, and Containment the same for .reanimator.yml and
+    # the committed snapshot.
+    def inside?(match) = !contained(match).nil?
+    private :inside?
+
+    # The real path of a path inside the repository, or nil.
+    def contained(match)
+      return if match.start_with?("/") || match.split("/").include?("..")
+
+      real = File.realpath(match, path)
+      real if real == real_root || real.start_with?("#{real_root}/")
+    rescue SystemCallError
+      nil
+    end
+    private :contained
+
+    def real_root = @real_root ||= File.realpath(path)
+    private :real_root
 
     # @return [Boolean] whether any path matches the glob
     def any?(pattern) = !glob(pattern).empty?
@@ -76,14 +107,16 @@ module Reanimator
     #   as UTF-8 and scrubbed so a detector's regex or slice can never raise on
     #   a stray byte (which would otherwise be swallowed as a "detector failed"
     #   and silently drop facts), including under a C/US-ASCII locale.
-    # A directory where a file is expected is not that file, so it reads as
-    # absent; a file Reanimator can see but not read still raises. A file
+    # A directory where a file is expected is not that file, and a file
+    # reached through a symlink out of the repository is not in it, so both
+    # read as absent; a file Reanimator can see but not read still raises. A file
     # behind a directory it cannot search is not seen at all, and reads as
     # absent - as File.exist? did before.
     def read(relative)
-      return unless File.file?(absolute(relative))
-
-      File.read(absolute(relative), encoding: "UTF-8").scrub
+      real = contained(relative)
+      # The real path checked is the one read, so a link swapped in between
+      # cannot lead the read elsewhere.
+      File.read(real, encoding: "UTF-8").scrub if real && File.file?(real)
     end
 
     def to_h

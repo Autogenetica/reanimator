@@ -128,6 +128,50 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   absent, a `package.json` that is not an object has no scripts, and a
   workflow `strategy` written as one expression - or a `.nan` in a matrix -
   credits nothing rather than crashing.
+- **A repository named in another case is read in full.** On a
+  case-insensitive filesystem, `baseline /path/SRC/repo` for a repository at
+  `/path/src/repo` globbed every file back in its real case, failed to trim
+  the root off, and so lost each gemspec: the declared floor vanished and
+  `support_matrix` reported nothing to verify. Paths are now globbed from the
+  root itself, which also reads a root whose name holds glob characters
+  (`br[1]`) - before, it matched nothing there. Every match must now lie
+  inside the repository, judged on what the glob returned rather than on the
+  pattern: an absolute or `..` path, a brace alternative or escape leading
+  out, or a symlink to somewhere outside no longer counts, so a declared
+  `documentation_check` target such as `/etc/hosts`, `{/etc/hosts,x}` or
+  `../other/README` cannot be satisfied by a file outside the repository. A
+  pattern Ruby refuses, such as one with a NUL byte, matches nothing instead
+  of ending the run.
+- **A symlink out of the repository no longer counts as evidence.**
+  `SECURITY.md -> ../elsewhere/SEC`, a `.github` linked to another
+  directory, or an `examples/` link out were credited as the repository's own
+  security policy, Dependabot configuration and examples. Detectors' and
+  evaluators' reads of repository files - `exist?` and `read` as well as
+  globs - now require the real path to lie inside the repository; a symlink
+  to a file inside it still counts. `.reanimator.yml` and the committed
+  drift snapshot are held to the same line: one linked from outside the
+  repository is refused with an error rather than read, or written through.
+- **Executed checks run only the repository's own files.** The disposable
+  copy dereferenced each top-level link, so `spec -> ../elsewhere` became a
+  real directory and a check passed on code outside the repository; a
+  dangling top-level link crashed `--execute` outright. Links are now copied
+  as links, and any link that leads out of the copy - absolute, climbing past
+  its root, or through another link, even one that dangles until a check
+  writes through it into the original tree - is left out, and so is one
+  whose path cannot be resolved, or that climbs back with `..` through
+  another link (which a check replacing that link with a directory would
+  turn outward). Nested `.git` files - a worktree's or submodule's pointer,
+  through which `git commit` in the copy reached the original repository -
+  are left out too, and the run warns which paths it left out. A monorepo
+  member's link to a sibling outside the repository root, such as
+  `vendor/shared -> ../../shared`, is left out as well, and so is a Python
+  virtualenv's absolute link to its base interpreter (`.venv/bin/python`), so
+  a check that runs a committed virtualenv fails with the warning naming it.
+  This keeps a committed link or `.git` file from leading ordinary checks out
+  of the repository; it is not isolation - an executed check still runs as
+  the invoking user and can write anywhere it chooses (section 12, not
+  built), and a nested repository's own `.git` directory can still name an
+  outside work tree or object store.
 
 ## [0.1.0] - 2026-10-28
 

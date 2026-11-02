@@ -37,6 +37,7 @@ module Reanimator
     # @param repository [Repository]
     # @return [ContractSnapshot, nil] nil when nothing has been recorded yet
     def load(repository)
+      held_by(repository)
       recorded?(repository) ? ContractSnapshot.load(path_for(repository)) : nil
     end
 
@@ -45,6 +46,7 @@ module Reanimator
     # @return [String] the path written
     def save(snapshot, repository)
       destination = path_for(repository)
+      held_by(repository)
       FileUtils.mkdir_p(directory) if directory
       File.write(destination, snapshot.to_json)
       destination
@@ -66,6 +68,14 @@ module Reanimator
     end
 
     private
+
+    # A snapshot a repository keeps itself must be its own: one linked from
+    # elsewhere would be compared against, and written through, as if it were.
+    def held_by(repository)
+      return if directory
+
+      Containment.ensure_inside!(repository.path, path_for(repository), DEFAULT_FILENAME)
+    end
 
     # A repository's identity flattened into one filename. A collision is not a
     # correctness risk: {DriftDetector} refuses to compare snapshots from two
