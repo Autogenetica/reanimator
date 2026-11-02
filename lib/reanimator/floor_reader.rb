@@ -18,16 +18,30 @@ module Reanimator
   class FloorReader
     FLOOR = :required_ruby_version
     FLOOR_WRITE = :required_ruby_version=
+    FLOOR_IVAR = :@required_ruby_version
     LOADS = %i[require require_relative load].freeze
     # Calls that run code given as a string, which a parse cannot see into.
     EVALS = %i[eval instance_eval class_eval module_eval].freeze
+    # Names that reach a load or an eval when called indirectly - by send,
+    # method(...).call - so the parse cannot see what they load or run.
+    INDIRECT = (LOADS + EVALS + %i[autoload]).map(&:to_s).freeze
+    # The load path, which decides where a bare require leads, and the calls
+    # that add to it.
+    LOAD_PATH = %i[$LOAD_PATH $: $-I].freeze
+    LOAD_PATH_ADDS = %i[unshift << push prepend insert concat append].freeze
     # How many levels of loads are followed from a gemspec.
     MAX_LOAD_DEPTH = 4
+    # Bounds on what is parsed at all. Real gemspecs are a few kilobytes and a
+    # few levels deep; far past that, Prism and the reader can exhaust the
+    # stack, and an overflow repeated in one process can kill it outright.
+    MAX_BYTES = 256 * 1024
+    MAX_NESTING = 1_000
 
     # What one file says about the floor: the requirements it assigns, the
     # first thing it could not read, the repository files it loads, the first
-    # load it could not follow, and whether the file could be read at all.
-    Reading = Struct.new(:requirements, :unreadable, :loads, :unfollowed, :unread)
+    # load it could not follow, whether the file could be read at all, and
+    # whether it changes the load path.
+    Reading = Struct.new(:requirements, :unreadable, :loads, :unfollowed, :unread, :load_path)
 
     # @param repository [Repository]
     def initialize(repository)
@@ -85,31 +99,103 @@ module Reanimator
     end
 
     def read_file(file)
-      reading = Reading.new([], nil, [], nil, false)
+      reading = Reading.new([], nil, [], nil, false, false)
       body = read_source(file)
       return reading.tap { reading.unread = true } unless body
+      return reading.tap { reading.unreadable = "it is too large to read" } if body.bytesize > MAX_BYTES
+      return reading.tap { reading.unreadable = "it is nested too deeply to read" } if nesting(body) > MAX_NESTING
 
       parsed = Prism.parse(body)
       return reading.tap { reading.unreadable = "it does not parse as Ruby" } if parsed.failure?
 
-      scan(parsed.value, file, body.lines, reading)
+      nodes = flatten(parsed.value)
+      reading.load_path = load_path_changed?(nodes, file)
+      nodes.each { |node| visit(node, file, body.lines, reading) }
       reading
+    rescue SystemStackError
+      reading.tap { reading.unreadable = "it is nested too deeply to read" }
     end
 
-    def scan(node, file, lines, reading)
+    # The deepest run of open brackets, counted without regard to strings - an
+    # overestimate, which only ever refuses more.
+    def nesting(body)
+      depth = deepest = 0
+      body.each_char do |char|
+        if "([{".include?(char)
+          depth += 1
+          deepest = depth if depth > deepest
+        elsif ")]}".include?(char)
+          depth -= 1
+        end
+      end
+      deepest
+    end
+
+    # Every node in the tree, in source order, walked without recursion so
+    # that deep nesting cannot exhaust the stack.
+    def flatten(tree)
+      nodes, pending = [], [tree]
+      while (node = pending.pop)
+        nodes << node
+        pending.concat(node.compact_child_nodes.reverse)
+      end
+      nodes
+    end
+
+    # Whether the file puts anything but the repository's lib/ on the load
+    # path - which a gem does as a matter of course, and the reader assumes.
+    # Then a bare require may lead elsewhere, so the reader does not guess.
+    def load_path_changed?(nodes, file)
+      lib = File.join(root, "lib")
+      assigned = nodes.grep(Prism::LocalVariableWriteNode).to_h { |node| [node.name, node.value] }
+      nodes.any? do |node|
+        case node
+        when Prism::GlobalVariableWriteNode, Prism::GlobalVariableOperatorWriteNode
+          LOAD_PATH.include?(node.name)
+        when Prism::CallNode
+          node.receiver.is_a?(Prism::GlobalVariableReadNode) && LOAD_PATH.include?(node.receiver.name) &&
+            LOAD_PATH_ADDS.include?(node.name) &&
+            !(node.arguments&.arguments || []).all? { |added| adds_lib?(added, assigned, file, lib) }
+        end
+      end
+    end
+
+    def adds_lib?(node, assigned, file, lib)
+      node = assigned[node.name] if node.is_a?(Prism::LocalVariableReadNode)
+      path = node.is_a?(Prism::StringNode) ? File.expand_path(node.unescaped, root) : built_path(node, file)
+      path == lib
+    rescue ArgumentError
+      false
+    end
+
+    def visit(node, file, lines, reading)
       case node
       when Prism::CallNode then call(node, file, lines, reading)
       when Prism::CallOrWriteNode, Prism::CallAndWriteNode, Prism::CallOperatorWriteNode
         unreadable(reading, node, lines) if node.read_name == FLOOR
       when Prism::CallTargetNode
         unreadable(reading, node, lines) if node.name == FLOOR_WRITE
-      when Prism::SymbolNode
-        unreadable(reading, node, lines) if node.unescaped.include?(FLOOR.to_s)
-      when Prism::StringNode
-        # Prose may mention the floor; only the method's own name could reach it.
-        unreadable(reading, node, lines) if node.unescaped.match?(/\A@?#{FLOOR}=?\z/o)
+      when Prism::InstanceVariableWriteNode, Prism::InstanceVariableOrWriteNode,
+        Prism::InstanceVariableAndWriteNode, Prism::InstanceVariableOperatorWriteNode,
+        Prism::InstanceVariableTargetNode
+        unreadable(reading, node, lines) if node.name == FLOOR_IVAR
+      when Prism::DefNode
+        # A method named for the floor replaces what the setter does.
+        unreadable(reading, node, lines) if [FLOOR, FLOOR_WRITE].include?(node.name)
+      when Prism::SymbolNode, Prism::StringNode
+        name(node.unescaped, node, lines, reading)
       end
-      node.compact_child_nodes.each { |child| scan(child, file, lines, reading) }
+    end
+
+    # A symbol or string that names the floor reaches it indirectly - send,
+    # instance_variable_set - and one that names a load or an eval runs code
+    # the parse cannot see. Prose that merely mentions them is just text.
+    def name(text, node, lines, reading)
+      if text.match?(/\A@?#{FLOOR}=?\z/o)
+        unreadable(reading, node, lines)
+      elsif INDIRECT.include?(text)
+        reading.unfollowed ||= line_of(node, lines)
+      end
     end
 
     def call(node, file, lines, reading)
@@ -117,14 +203,20 @@ module Reanimator
         found = literals(node.arguments&.arguments&.first)
         found ? reading.requirements.concat(found) : unreadable(reading, node, lines)
       elsif LOADS.include?(node.name) && kernel?(node.receiver)
-        target = load_target(node, file)
-        reading.loads << target if target.is_a?(String)
-        reading.unfollowed ||= line_of(node, lines) unless target
-      elsif EVALS.include?(node.name) && node.arguments
-        reading.unfollowed ||= line_of(node, lines)
+        follow(load_target(node.name, node.arguments&.arguments&.first, file, reading), node, lines, reading)
+      elsif node.name == :autoload && node.arguments&.arguments&.size == 2
+        follow(load_target(:require, node.arguments.arguments.last, file, reading), node, lines, reading)
+      elsif node.name == :eval || (EVALS.include?(node.name) && node.arguments)
+        # Code run from a string could set any floor, so no literal settles it.
+        unreadable(reading, node, lines)
       elsif node.name == :load && node.receiver&.slice&.end_with?("Specification")
         reading.unfollowed ||= line_of(node, lines)
       end
+    end
+
+    def follow(target, node, lines, reading)
+      reading.loads << target if target.is_a?(String)
+      reading.unfollowed ||= line_of(node, lines) unless target
     end
 
     # The string literals assigned as the floor, or nil when the value is
@@ -156,12 +248,11 @@ module Reanimator
     # finds among installed gems, or nil when Reanimator cannot follow it -
     # a path built at runtime, one outside the repository or through a
     # symlink, or one Ruby could not use.
-    def load_target(node, file)
-      argument = node.arguments&.arguments&.first
+    def load_target(kind, argument, file, reading)
       if argument.is_a?(Prism::StringNode)
-        literal_target(node.name, argument.unescaped, file)
+        literal_target(kind, argument.unescaped, file, reading.load_path)
       elsif (path = built_path(argument, file))
-        repository_file((node.name == :load) ? path : ruby_file(path))
+        repository_file((kind == :load) ? path : ruby_file(path))
       end
     rescue ArgumentError, EncodingError
       nil
@@ -173,8 +264,12 @@ module Reanimator
     # load unfollowed. A bare name is searched for in lib/, which a gem puts
     # on its load path; one that is there in any form Reanimator cannot place
     # exactly - a symlink, a different case - is not a library.
-    def literal_target(kind, literal, file)
+    def literal_target(kind, literal, file, load_path)
       bare = !literal.start_with?("./", "../", "/", "~")
+      # A file that changes the load path decides itself where a bare name
+      # leads, so Reanimator does not guess.
+      return if bare && load_path && kind != :require_relative
+
       case kind
       when :require_relative
         repository_file(ruby_file(File.absolute_path(literal, File.dirname(file))))

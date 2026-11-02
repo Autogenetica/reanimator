@@ -59,18 +59,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   counts, wherever it sits; its value must be a string literal, an array of
   them, `.freeze` on one or `Gem::Requirement.new` of them, and any other
   route to the floor — a constant, an interpolation, `send`, `||=`,
-  `instance_variable_set` — makes the floor unreadable, reported as missing
-  evidence asking for a literal, never read as "no floor". Loads are
-  followed wherever they appear: `require_relative`, `load`, a `require`
-  found under `lib/` or from the root, `File.expand_path` from `__dir__` or
+  `instance_variable_set`, a write of `@required_ruby_version`, a method
+  named for the floor, code run from a string — makes the floor unreadable,
+  reported as missing evidence asking for a literal, never read as "no
+  floor". Loads are followed wherever they appear: `require_relative`,
+  `load`, `autoload`, a `require` found under `lib/` (unless the file puts
+  something else on the load path) or from the root, `File.expand_path` from `__dir__` or
   `__FILE__`, or `File.dirname(__FILE__)`/`__dir__` `+ "/x"`, four levels
   deep, each file read on its own as UTF-8 whatever the locale. A load
   Reanimator cannot follow (a path built at runtime, one leaving the
-  repository or passing through a symlink, `eval`, another gemspec loaded)
-  makes the floor unreadable unless the gemspec itself assigns a literal
-  floor, and so does a file it cannot read or parse. Across 1,370 installed
+  repository or passing through a symlink, a load reached by name, another
+  gemspec loaded) makes the floor unreadable unless the gemspec itself
+  assigns a literal floor, and so does a file it cannot read or parse, or
+  one too large or deeply nested to parse safely. Across 1,397 installed
   gemspecs, the reader never gave a higher floor than Ruby nor "no floor"
-  where Ruby had one; five gems read as unreadable.
+  where Ruby had one; six gems read as unreadable. A detector that overflows
+  the stack is now recorded as a discovery failure like any other crash.
   Exclude keys and values match loosely (case aside, `7.0` as `7`), a job with
   `if: false` is not credited, and — as before — a workflow that only runs on
   manual dispatch is still read. Gemspec requirements written as arrays — on one

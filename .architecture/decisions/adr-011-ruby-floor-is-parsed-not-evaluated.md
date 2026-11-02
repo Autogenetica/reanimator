@@ -36,13 +36,18 @@ they mean to Ruby.
 - **Its value must be literal:** a string, an array of strings, `.freeze` on
   one, or `Gem::Requirement.new` of them. Anything else - a constant, an
   interpolation, a method call on the literal - makes the floor unreadable.
-- **Any other route to the floor is unreadable:** `send` or `public_send`
-  with its name, `instance_variable_set(:@required_ruby_version, ...)`,
-  `||=` and other operator writes, a multiple assignment. Prose that merely
-  mentions the floor is just a string.
+- **Any other route to the floor is unreadable:** a symbol or string naming
+  it (`send`, `public_send`, `instance_variable_set`), `||=`, `&&=` and other
+  operator writes, a multiple assignment, a direct write of
+  `@required_ruby_version`, a method defined with the floor's name, and code
+  run from a string (`eval`, `binding.eval`, `instance_eval("...")`) - which
+  could set any floor, so not even a literal floor in the gemspec settles it.
+  Prose that merely mentions the floor is just a string.
 - **Every load anywhere is followed or reported.** `require_relative` resolves
-  from the loading file; `load` and `require` from `lib/` (which a gem puts
-  on its load path) or the root; `File.expand_path` from `__dir__` or
+  from the loading file; `load`, `require` and `autoload` from `lib/` (which
+  a gem puts on its load path) or the root - unless the file puts anything
+  else on the load path, when a bare name could lead elsewhere and is not
+  followed; `File.expand_path` from `__dir__` or
   `__FILE__`, and `__dir__`/`File.dirname(__FILE__) + "/x"`, from the loading
   file. `~` is kept or expanded as Ruby does for each. Nested loads are
   followed four levels deep, each file read on its own as UTF-8, only to
@@ -50,13 +55,16 @@ they mean to Ruby.
   places a linked file's own loads by rules that differ between the gemspec
   and what it loads, and Reanimator does not guess which.
 - **A load it cannot follow** - a path built at runtime, one outside the
-  repository or through a symlink, a missing file, `eval` of a string,
-  `Gem::Specification.load` of another gemspec, a bare `require` of a name
-  that is in `lib/` but not exactly - makes the floor unreadable, **unless
+  repository or through a symlink, a missing file, a load reached by name
+  (`send(:require_relative, ...)`), `Gem::Specification.load` of another
+  gemspec, a bare `require` of a name that is in `lib/` but not exactly -
+  makes the floor unreadable, **unless
   the gemspec itself assigns a literal floor**, the owner's own statement,
   which then settles it.
 - **A file that does not parse, or cannot be read,** makes the floor
-  unreadable. A detector that still crashes is a discovery failure, which
+  unreadable, and so does one over 256 KB or nested over 1,000 brackets
+  deep: past that, parsing can exhaust the stack, and an overflow repeated
+  in one process can kill it outright. A detector that still crashes is a discovery failure, which
   ADR-012 makes block the run rather than drop the facts.
 
 Unreadable is reported as missing evidence asking for a literal floor, never
@@ -67,16 +75,19 @@ as "no floor".
 - An unfollowed load beside a literal floor in the gemspec, when that load
   lowers the floor - or when the gemspec's floor sits in a helper it never
   calls, which still settles it.
-- A `require` of a name found through a `$LOAD_PATH` entry other than `lib/`.
-- A route to the floor through values the parse cannot see: `send` of a
-  method name held in a variable, or `Gem::Specification` reopened elsewhere.
-  Each needs deliberate indirection.
+- A route to the floor through a name the parse cannot see - any computed
+  name (`public_send(var)`, an interpolated or concatenated symbol), the
+  requirement object mutated through its getter, `ObjectSpace`, or
+  `Gem::Specification` reopened in a file the gemspec does not load. Each
+  needs deliberate indirection.
 
-Across 1,370 installed gemspecs (the same gems under several Rubies), the
+Across 1,397 installed gemspecs (the same gems under several Rubies), the
 parser was compared with `Gem::Specification.load`: it never returned a
-higher floor than Ruby's nor "no floor" where Ruby had one; it read five
-gems as unreadable, the same five the line reader did, and every other
-reading was unchanged.
+higher floor than Ruby's nor "no floor" where Ruby had one. Six gems read
+as unreadable: the five the line reader also could not read, and fiddle,
+which `module_eval`s its version file beside a literal floor. A reviewer ran
+the same cases under Prism 1.0, 1.9 and 2.1 with identical readings; the
+dependency allows `< 3` on that basis.
 
 ## Alternatives considered
 
@@ -92,5 +103,9 @@ reading was unchanged.
   gemspecs - mostly the default gems' `rescue LoadError; require_relative
   "version"` fallback - would ask their owners to rewrite a floor that is
   already a plain literal.
+- **Credit the standard `$LOAD_PATH.unshift` only by assuming it.** Treating
+  any load-path change as unfollowed made 22 of 260 installed gems
+  unreadable, nearly all for the idiom that adds `lib/`. Only adding
+  something other than the repository's `lib/` counts.
 - **Treat a floor in a branch as unreadable.** Unnecessary: the lowest floor
   wins, so reading a branch Ruby skips can only be stricter.

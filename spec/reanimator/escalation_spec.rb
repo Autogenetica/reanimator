@@ -293,6 +293,11 @@ RSpec.describe "escalation delivery" do
         "send with a string" => "  s.public_send(\"required_ruby_version=\", \">= 3.1\")\n",
         "instance_variable_set" => "  s.instance_variable_set(:@required_ruby_version, Gem::Requirement.new(\">= 3.1\"))\n",
         "or-assign" => "  s.required_ruby_version ||= \">= 3.1\"\n",
+        "and-assign" => "  s.required_ruby_version &&= \">= 3.1\"\n",
+        "instance_variable_set with a string" => "  s.instance_variable_set(\"@required_ruby_version\", \">= 3.1\")\n",
+        "the instance variable itself" => "  s.instance_eval { @required_ruby_version = Gem::Requirement.new(\">= 3.1\") }\n",
+        "a method named for the floor" => "  def s.required_ruby_version=(v)\n    super(\">= 2.7\")\n  end\n",
+        "eval beside a literal floor" => "  s.required_ruby_version = \">= 3.3\"\n  binding.eval(File.read(\"shared.rb\"))\n",
         "multiple assignment" => "  s.required_ruby_version, x = \">= 3.1\", 1\n",
         "eval" => "  s.instance_eval(\"self.required_ruby_version = '>= 3.1'\")\n",
         "next-line method chain" => "  s.required_ruby_version = \">= 3.3\"\n    .sub(\"3.3\", \"2.7\")\n",
@@ -490,6 +495,38 @@ RSpec.describe "escalation delivery" do
         end
       end
 
+      it "follows autoload" do
+        {
+          "autoload" => "autoload :Common, File.expand_path('gemspec', __dir__)",
+          "Object.autoload" => "Object.autoload(:Common, './gemspec')",
+          "require_relative with .rb" => "require_relative 'gemspec.rb'"
+        }.each do |shape, load|
+          expect(floor_in(gemspec_loading(load).merge("gemspec.rb" => common)).value(:supported_ruby)).to eq([">= 3.2"]), shape
+        end
+      end
+
+      it "reads moderate nesting, and refuses a file too deep or too large to parse safely" do
+        floor = "Gem::Specification.new { |s| s.required_ruby_version = '>= 3.1' }\n"
+        nested = ->(depth) { "x = #{"[" * depth}#{"]" * depth}\n#{floor}" }
+        expect(floor_in("widget.gemspec" => nested.call(900)).value(:supported_ruby)).to eq([">= 3.1"])
+        expect(floor_in("widget.gemspec" => nested.call(5000)).value(:supported_ruby_unreadable)).to eq("it is nested too deeply to read")
+        expect(floor_in("widget.gemspec" => "#{"# padding\n" * 30_000}#{floor}").value(:supported_ruby_unreadable))
+          .to eq("it is too large to read")
+      end
+
+      it "does not guess where a bare require leads once the load path holds more than lib/" do
+        standard = "lib = File.expand_path('lib', __dir__)\n$LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)\nrequire 'widget/common'"
+        expect(floor_in(gemspec_loading(standard).merge("lib/widget/common.rb" => common)).value(:supported_ruby)).to eq([">= 3.2"])
+
+        moved = "$LOAD_PATH.unshift(__dir__)\nrequire 'common'"
+        expect(floor_in(gemspec_loading(moved).merge("common.rb" => common)).value(:supported_ruby_unreadable)).to include("require 'common'")
+      end
+
+      it "treats a load or eval reached by name as one it cannot follow" do
+        files = gemspec_loading("send(:require_relative, 'gemspec')").merge("gemspec.rb" => common)
+        expect(floor_in(files).value(:supported_ruby_unreadable)).to include("send(:require_relative, 'gemspec')")
+      end
+
       it "treats a library require it cannot place exactly, eval and a loaded gemspec as unfollowed" do
         repo = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(
           gemspec_loading("require 'widget/version'"), "other/version.rb" => common, "lib/widget/.keep" => ""
@@ -499,7 +536,6 @@ RSpec.describe "escalation delivery" do
 
         {
           "a path that is not normal" => ["require 'widget/../widget/version'", {"lib/widget/version.rb" => common}],
-          "eval of a file" => ["eval(File.read('gemspec.rb'))", {}],
           "a loaded gemspec" => ["Gem::Specification.load('base.gemspec')", {}]
         }.each do |shape, (load, extra)|
           expect(floor_in(gemspec_loading(load).merge(extra)).value(:supported_ruby_unreadable)).to include(load), shape
