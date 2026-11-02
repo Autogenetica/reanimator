@@ -158,6 +158,18 @@ RSpec.describe Reanimator::Discovery do
     expect(discover.facts).to eq([])
   end
 
+  it "records a detector that raised, so its missing facts are not read as absent" do
+    allow(Reanimator.logger).to receive(:warn)
+    allow_any_instance_of(Reanimator::Detectors::Bundler).to receive(:detect).and_raise(ArgumentError, "boom")
+    result = discover(files: {"Gemfile" => "source 'x'\n"})
+
+    expect(result.fact?(:bundler)).to be(false)
+    expect(result.failure(Reanimator::Detectors::Bundler).error).to eq("ArgumentError: boom")
+    expect(result.failure(Reanimator::Detectors::Commands)).to be_nil
+    expect(Reanimator::Reports::Discovery.new(result).render)
+      .to include("Reanimator::Detectors::Bundler failed (ArgumentError: boom); its facts are missing.")
+  end
+
   it "survives non-UTF-8 files and still detects the ecosystem" do
     path = make_repo(files: {"widget.gemspec" => "x"})
     # A Gemfile with an invalid byte would otherwise make the detector's regex

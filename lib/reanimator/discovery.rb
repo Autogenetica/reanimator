@@ -29,20 +29,22 @@ module Reanimator
 
     # @return [DiscoveryResult]
     def run
+      failures = []
       facts = detectors.flat_map do |klass|
         klass.new(repository).call
       rescue => e
         # A misbehaving detector must never sink the whole observation; record
-        # the failure and keep going. Robustness over completeness here - but the
-        # failure is logged with its class and origin so a swallowed bug stays
-        # diagnosable rather than silently dropping facts.
+        # the failure and keep going. Its facts are missing, not absent, so the
+        # failure travels with the result: an evaluator that reads "no fact" as
+        # "nothing declared" would otherwise pass on a detector that crashed.
         Reanimator.logger.warn(
           "#{klass} failed on #{repository.name}: #{e.class}: #{e.message} (at #{e.backtrace&.first})"
         )
+        failures << DiscoveryResult::Failure.new(detector: klass, error: "#{e.class}: #{e.message}")
         []
       end
 
-      DiscoveryResult.new(repository: repository, facts: facts)
+      DiscoveryResult.new(repository: repository, facts: facts, failures: failures)
     end
   end
 end

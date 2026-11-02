@@ -340,6 +340,16 @@ RSpec.describe "escalation delivery" do
       expect(Reanimator.snapshot(make_repo(files: files)).support_matrix).to contain_exactly("3.1", "3.4")
     end
 
+    [Reanimator::Detectors::Bundler, Reanimator::Detectors::GitHubActions].each do |detector|
+      it "treats a crashed #{detector.name.split("::").last} detector as missing evidence, never as nothing declared" do
+        allow(Reanimator.logger).to receive(:warn)
+        allow_any_instance_of(detector).to receive(:detect).and_raise(Encoding::CompatibilityError, "boom")
+        result = support_result(narrowed_support)
+        expect(result.status).to eq(:missing_evidence)
+        expect(result.detail).to include("#{detector} failed (Encoding::CompatibilityError: boom)")
+      end
+    end
+
     it "treats >= 0 as no floor at all" do
       expect(support_result(gem_with(requirement: "'>= 0'"))).to be_verified
     end

@@ -7,12 +7,21 @@ module Reanimator
   class DiscoveryResult
     # The suggested profile with the reasoning behind it.
     Suggestion = Struct.new(:profile, :confidence, :reason)
+    # A detector that raised, so its facts are missing rather than absent.
+    Failure = Data.define(:detector, :error)
 
-    attr_reader :repository, :facts
+    attr_reader :repository, :facts, :failures
 
-    def initialize(repository:, facts:)
+    def initialize(repository:, facts:, failures: [])
       @repository = repository
       @facts = facts
+      @failures = failures
+    end
+
+    # The failure of this detector, or nil when it ran.
+    # @return [Failure, nil]
+    def failure(detector)
+      failures.find { |failure| failure.detector == detector }
     end
 
     # @return [DiscoveredFact, nil]
