@@ -56,6 +56,12 @@ module Reanimator
     # @return [ContractSnapshot]
     def self.of(contract, taken_at: Time.now)
       discovery = contract.discovery
+      # A contract read in part would record a crash as a policy change, or
+      # compare as one - neither is a decision anyone made.
+      unless discovery.complete?
+        raise DiscoveryIncomplete, "#{contract.repository.full_name}: #{discovery.failures.join("; ")}, " \
+          "so its contract was read in part and cannot be recorded or compared."
+      end
 
       new(
         repository: contract.repository.full_name,

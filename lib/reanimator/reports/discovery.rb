@@ -29,7 +29,7 @@ module Reanimator
       end
 
       def failures_section
-        lines = @discovery.failures.map { |failure| "  #{failure.detector} failed (#{failure.error}); its facts are missing." }
+        lines = @discovery.failures.map { |failure| "  #{failure}; its facts are missing." }
         (["not read:"] + lines).join("\n")
       end
 

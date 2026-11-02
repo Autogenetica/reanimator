@@ -18,4 +18,8 @@ module Reanimator
   # loosen - the precedence rules in section 07 of the specification are not
   # advisory, they are enforced.
   class PolicyViolation < Error; end
+
+  # Raised when a detector failed, so the contract was read only in part and
+  # cannot be recorded or compared as if it were whole.
+  class DiscoveryIncomplete < Error; end
 end

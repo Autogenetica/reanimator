@@ -48,7 +48,7 @@ module Reanimator
           timeout: timeout, execution_root: execution_root, egress: egress
         ).call
       end
-      results = apply_waivers(results)
+      results = apply_waivers(results) + incomplete_discovery
 
       Baseline.new(
         contract: contract,
@@ -72,6 +72,22 @@ module Reanimator
         waiver = contract.waiver_for(result.criterion.id)
         waiver ? result.accepted_via(waiver) : result
       end
+    end
+
+    # A detector that crashed leaves facts missing that the contract was built
+    # from - a profile inferred without them may carry fewer obligations, and
+    # a pass against those is no proof. So the failure is itself a required,
+    # unwaivable error: the run cannot be Alive, and a human is told.
+    DISCOVERY = AcceptanceCriterion.new(
+      id: :discovery_complete, claim: "Reanimator read the whole repository.", evaluator: :discovery
+    )
+
+    def incomplete_discovery
+      failures = contract.discovery.failures
+      return [] if failures.empty?
+
+      [CriterionResult.new(criterion: DISCOVERY, status: :error,
+        detail: "#{failures.join("; ")}; the contract may be missing obligations.")]
     end
 
     # Execution requires both the per-run request and the global allowance.

@@ -21,6 +21,7 @@ RSpec.configure do |config|
   Kernel.srand config.seed
 
   config.include RepositoryFixture
+  config.include CrashingDetector
 
   # Every fixture repository is created under a temp dir tracked per-example
   # and removed afterward, so specs never leak working trees.

@@ -159,8 +159,7 @@ RSpec.describe Reanimator::Discovery do
   end
 
   it "records a detector that raised, so its missing facts are not read as absent" do
-    allow(Reanimator.logger).to receive(:warn)
-    allow_any_instance_of(Reanimator::Detectors::Bundler).to receive(:detect).and_raise(ArgumentError, "boom")
+    crash(Reanimator::Detectors::Bundler)
     result = discover(files: {"Gemfile" => "source 'x'\n"})
 
     expect(result.fact?(:bundler)).to be(false)

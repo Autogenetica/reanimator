@@ -21,7 +21,7 @@ module Reanimator
 
         graded =
           if (failed = failed_detector)
-            result(:missing_evidence, detail: "Reanimator could not read declared support: #{failed.detector} failed (#{failed.error}).")
+            result(:missing_evidence, detail: "Reanimator could not read declared support: #{failed}.")
           elsif (unread = unreadable_floor(declared))
             result(:missing_evidence, detail: "#{unread} Write the floor as a string literal so declared support can be checked.")
           elsif ci.any?
@@ -40,7 +40,7 @@ module Reanimator
       # A crashed detector leaves no floor or matrix fact behind, which would
       # otherwise read as "nothing declared" and pass.
       def failed_detector
-        [Detectors::Bundler, Detectors::GitHubActions].lazy.filter_map { |detector| discovery.failure(detector) }.first
+        [Detectors::Bundler, Detectors::GitHubActions].filter_map { |detector| discovery.failure(detector) }.first
       end
 
       # A workflow Reanimator could not read is named in any verdict short of

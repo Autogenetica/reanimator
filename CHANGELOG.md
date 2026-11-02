@@ -95,11 +95,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   repository's snapshot.
 - **A criterion whose command disappears is policy drift,** not a benign
   rename, so losing the proof behind an obligation can no longer pass quietly.
-- **A detector that crashes no longer reads as "nothing declared".** Discovery
-  still keeps going when one detector raises, but now records the failure with
-  the result and lists it under "not read" in `discover`. `support_matrix`
-  reports missing evidence when the Bundler or GitHub Actions detector failed,
-  where before a crash dropped the declared floor and any matrix was credited.
+- **A detector that crashes blocks the run instead of shrinking the contract.**
+  Discovery still keeps going when one detector raises, but a crash used to
+  drop its facts as if they had never been there: a crashed Rails or gem
+  detector made the profile infer as `generic`, with no required checks, and
+  a failing repository read Alive. The failure now travels with the discovery
+  result. `discover` lists it under "not read"; `baseline` adds a required
+  `discovery_complete` error, so the run cannot be Alive and exits `2`;
+  `drift` refuses to compare or record a contract read in part (exit `1`); and
+  `support_matrix` names the detector when Bundler or GitHub Actions failed.
 
 ## [0.1.0] - 2026-10-28
 

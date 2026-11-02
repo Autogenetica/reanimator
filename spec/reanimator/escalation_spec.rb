@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "open3"
 
 # Section 16: an escalation has to reach a human without anyone reading a
@@ -342,8 +343,7 @@ RSpec.describe "escalation delivery" do
 
     [Reanimator::Detectors::Bundler, Reanimator::Detectors::GitHubActions].each do |detector|
       it "treats a crashed #{detector.name.split("::").last} detector as missing evidence, never as nothing declared" do
-        allow(Reanimator.logger).to receive(:warn)
-        allow_any_instance_of(detector).to receive(:detect).and_raise(Encoding::CompatibilityError, "boom")
+        crash(detector, Encoding::CompatibilityError.new("boom"))
         result = support_result(narrowed_support)
         expect(result.status).to eq(:missing_evidence)
         expect(result.detail).to include("#{detector} failed (Encoding::CompatibilityError: boom)")
@@ -510,6 +510,29 @@ RSpec.describe "escalation delivery" do
         $stdout, $stderr = previous
       end
       [status, out.string, err.string]
+    end
+
+    it "blocks a baseline whose discovery was incomplete, though inference then asks for less" do
+      failing_gem = {"widget.gemspec" => "Gem::Specification.new { |s| s.name = 'widget' }\n", "README.md" => "# widget"}
+      crash(Reanimator::Detectors::RubyGem)
+      baseline = Reanimator.baseline(make_repo(files: failing_gem))
+
+      expect(baseline.contract.profile.id).not_to eq(:"ruby-gem")
+      expect(baseline.state.alive?).to be(false)
+      expect(baseline.escalations.map { |result| result.criterion.id }).to include(:discovery_complete)
+      expect(baseline.result_for(:discovery_complete).detail).to include("Reanimator::Detectors::RubyGem failed (ArgumentError: boom)")
+      expect(run_cli("baseline", make_repo(files: failing_gem)).first).to eq(2)
+    end
+
+    it "refuses to record or compare a contract read in part" do
+      repo = make_repo(files: narrowed_support)
+      crash(Reanimator::Detectors::GitHubActions)
+
+      expect { Reanimator.snapshot(repo) }.to raise_error(Reanimator::DiscoveryIncomplete, /GitHubActions failed/)
+      status, _out, err = run_cli("drift", repo, "--record")
+      expect([status, err]).to match([1, /read in part/])
+      expect(File.exist?(File.join(repo, ".reanimator-snapshot.json"))).to be(false)
+      expect(Reanimator.portfolio_drift([repo, make_repo(files: narrowed_support)]).requires_review?).to be(true)
     end
 
     let(:actions) { {"GITHUB_ACTIONS" => "true", "GITHUB_STEP_SUMMARY" => File.join(make_repo(files: {}), "summary.md")} }
