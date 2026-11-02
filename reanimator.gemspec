@@ -51,4 +51,7 @@ Gem::Specification.new do |spec|
   # Bundled gems that Ruby is trimming from the default set - declare what we use.
   spec.add_dependency "psych", ">= 5.0"
   spec.add_dependency "logger"
+  # Parses gemspecs to read their Ruby floor without running them (ADR-011).
+  # Ruby ships it from 3.3, but at a version whose API predates 1.0.
+  spec.add_dependency "prism", ">= 1.0", "< 3"
 end

@@ -53,26 +53,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   or invalid YAML) is named in the result but never softens it: the readable
   workflows decide, so a narrowing they prove still blocks, and an aliased
   workflow's Rubies are simply not counted. The declared floor is read from
-  every root gemspec, the lowest winning. Every line that mentions
-  `required_ruby_version` (outside full-line comments) must be a complete
-  assignment of string literals; anything else — a constant, `%q()`,
-  interpolation, a heredoc, a lookup, a value on the next line, `send`, `||=`,
-  a trailing comma, a next-line method chain or boolean operator, a mention
-  after `__END__` or inside `=begin`, where a heredoc could make it code —
-  makes the floor unreadable, reported as missing evidence asking for a
-  literal, never read as "no floor". The floor is also read from the local
-  files a gemspec loads — `require_relative`, `load`, a `require` found under
-  `lib/` or from the root, `File.expand_path` from `__dir__` or `__FILE__`, or
-  `File.dirname(__FILE__)`/`__dir__` `+ "/x"` — when the path is the whole
-  argument, following nested loads four levels deep, each file read on its
-  own as UTF-8 whatever the locale. A load Reanimator cannot follow (a path
-  built at runtime or with anything added to it, one leaving the repository
-  or passing through a symlink, or a path Ruby could not use) makes the floor
-  unreadable unless
-  the gemspec itself assigns a literal floor, and so does a file it cannot
-  read. Of 260 installed gem versions with a gemspec, five read as
-  unreadable. ADR-011 records why the floor is read rather than evaluated,
-  and the load shapes the reader still does not follow.
+  every root gemspec, the lowest winning, by **parsing** the gemspec and the
+  local files it loads with Prism — never running them (ADR-011; `prism` is
+  a new runtime dependency). Every assignment of `required_ruby_version`
+  counts, wherever it sits; its value must be a string literal, an array of
+  them, `.freeze` on one or `Gem::Requirement.new` of them, and any other
+  route to the floor — a constant, an interpolation, `send`, `||=`,
+  `instance_variable_set` — makes the floor unreadable, reported as missing
+  evidence asking for a literal, never read as "no floor". Loads are
+  followed wherever they appear: `require_relative`, `load`, a `require`
+  found under `lib/` or from the root, `File.expand_path` from `__dir__` or
+  `__FILE__`, or `File.dirname(__FILE__)`/`__dir__` `+ "/x"`, four levels
+  deep, each file read on its own as UTF-8 whatever the locale. A load
+  Reanimator cannot follow (a path built at runtime, one leaving the
+  repository or passing through a symlink, `eval`, another gemspec loaded)
+  makes the floor unreadable unless the gemspec itself assigns a literal
+  floor, and so does a file it cannot read or parse. Across 1,370 installed
+  gemspecs, the reader never gave a higher floor than Ruby nor "no floor"
+  where Ruby had one; five gems read as unreadable.
   Exclude keys and values match loosely (case aside, `7.0` as `7`), a job with
   `if: false` is not credited, and — as before — a workflow that only runs on
   manual dispatch is still read. Gemspec requirements written as arrays — on one

@@ -241,10 +241,10 @@ RSpec.describe "escalation delivery" do
       expect(support_result(gem_with(requirement: "'>= 3.0'", workflow: workflow)).status).to eq(:missing_evidence)
     end
 
-    it "treats a floor inside a =begin block as unreadable, since a heredoc can make it code" do
+    it "ignores a floor inside a =begin block, which Ruby never runs" do
       gemspec = "Gem::Specification.new do |s|\n=begin\n  s.required_ruby_version = \">= 2.7\"\n=end\n  s.required_ruby_version = \">= 3.1\"\nend\n"
       files = gem_with(requirement: "'>= 3.1'", matrix: %w[3.1 3.4]).merge("widget.gemspec" => gemspec)
-      expect(support_result(files).status).to eq(:missing_evidence)
+      expect(support_result(files)).to be_verified
     end
 
     it "ignores a commented-out lower floor" do
@@ -274,7 +274,6 @@ RSpec.describe "escalation delivery" do
     it "reports a floor it cannot read as missing evidence, never as no floor" do
       {
         "constant" => "  s.required_ruby_version = MIN_RUBY\n",
-        "%q()" => "  s.required_ruby_version = %q(>= 3.1)\n",
         "interpolation" => "  s.required_ruby_version = \">= \#{MIN}\"\n",
         "lookup" => "  s.required_ruby_version = gemspec['required_ruby_version']\n",
         "heredoc" => "  s.required_ruby_version = <<~R.strip\n    >= 3.1\n  R\n"
@@ -288,16 +287,18 @@ RSpec.describe "escalation delivery" do
       end
     end
 
-    it "treats any mention it cannot read as a literal assignment as an unreadable floor" do
+    it "treats any other way of reaching the floor as an unreadable floor" do
       {
-        "value on the next line" => "  s.required_ruby_version =\n    \">= 3.1\"\n",
-        "requirement over lines" => "  s.required_ruby_version = Gem::Requirement.new(\n    \">= 3.1\"\n  )\n",
         "send" => "  s.send(:required_ruby_version=, \">= 3.1\")\n",
-        "instance variable" => "  @spec.required_ruby_version = \">= 3.1\"\n",
+        "send with a string" => "  s.public_send(\"required_ruby_version=\", \">= 3.1\")\n",
+        "instance_variable_set" => "  s.instance_variable_set(:@required_ruby_version, Gem::Requirement.new(\">= 3.1\"))\n",
         "or-assign" => "  s.required_ruby_version ||= \">= 3.1\"\n",
-        "leading-dot chain" => "  s\n    .required_ruby_version = \">= 3.1\"\n",
-        "comparison" => "  raise unless s.required_ruby_version == \">= 3.4\"\n  s.required_ruby_version = \">= 3.1\"\n",
-        "description" => "  s.description = \"needs required_ruby_version 3.4\"\n  s.required_ruby_version = \">= 3.1\"\n"
+        "multiple assignment" => "  s.required_ruby_version, x = \">= 3.1\", 1\n",
+        "eval" => "  s.instance_eval(\"self.required_ruby_version = '>= 3.1'\")\n",
+        "next-line method chain" => "  s.required_ruby_version = \">= 3.3\"\n    .sub(\"3.3\", \"2.7\")\n",
+        "next-line safe navigation" => "  s.required_ruby_version = \">= 3.3\"\n    &.sub(\"3.3\", \"2.7\")\n",
+        "next-line &&" => "  s.required_ruby_version = \">= 3.3\"\n    && \">= 2.7\"\n",
+        "next-line ||" => "  s.required_ruby_version = \">= 3.3\"\n    || \">= 2.7\"\n"
       }.each do |shape, lines|
         gemspec = "Gem::Specification.new do |s|\n#{lines}end\n"
         files = gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge("widget.gemspec" => gemspec)
@@ -307,23 +308,25 @@ RSpec.describe "escalation delivery" do
       end
     end
 
-    it "fails closed on code hidden where a line-by-line reader cannot follow it" do
+    it "reads what Ruby assigns, however it is laid out" do
       {
-        "interpolation in a heredoc" => "  s.description = <<~D\n    \#{s.required_ruby_version = \">= 2.7\"; nil}\n  D\n",
-        "=begin inside a heredoc" => "  s.description = <<-D\n=begin\n  D\n  s.required_ruby_version = \">= 2.7\"\n",
-        "__END__ inside a heredoc" => "  s.description = <<~D\n__END__\n  D\n  s.required_ruby_version = \">= 2.7\"\n",
-        "=begin and =end in two heredocs" => "  s.summary = <<-D\n=begin\n  D\n  s.required_ruby_version = \">= 2.7\"\n  s.description = <<-D\n=end\n  D\n",
-        "trailing comma" => "  s.required_ruby_version = \">= 3.3\",\n    \">= 2.7\"\n",
-        "next-line method chain" => "  s.required_ruby_version = \">= 3.3\"\n    .sub(\"3.3\", \"2.7\")\n",
-        "next-line safe navigation" => "  s.required_ruby_version = \">= 3.3\"\n    &.sub(\"3.3\", \"2.7\")\n",
-        "next-line &&" => "  s.required_ruby_version = \">= 3.3\"\n    && \">= 2.7\"\n",
-        "next-line ||" => "  s.required_ruby_version = \">= 3.3\"\n    || \">= 2.7\"\n",
-        "next-line and" => "  s.required_ruby_version = \">= 3.3\"\n    and \">= 2.7\"\n",
-        "next-line or" => "  s.required_ruby_version = \">= 3.3\"\n    or \">= 2.7\"\n"
-      }.each do |shape, lines|
+        "value on the next line" => ["  s.required_ruby_version =\n    \">= 3.1\"\n", [">= 3.1"]],
+        "requirement over lines" => ["  s.required_ruby_version = Gem::Requirement.new(\n    \">= 3.1\"\n  )\n", [">= 3.1"]],
+        "instance variable" => ["  @spec.required_ruby_version = \">= 3.1\"\n", [">= 3.1"]],
+        "leading-dot chain" => ["  s\n    .required_ruby_version = \">= 3.1\"\n", [">= 3.1"]],
+        "comparison" => ["  raise unless s.required_ruby_version == \">= 3.4\"\n  s.required_ruby_version = \">= 3.1\"\n", [">= 3.1"]],
+        "description" => ["  s.description = \"needs required_ruby_version 3.4\"\n  s.required_ruby_version = \">= 3.1\"\n", [">= 3.1"]],
+        "%q()" => ["  s.required_ruby_version = %q(>= 3.1)\n", [">= 3.1"]],
+        "trailing comma" => ["  s.required_ruby_version = \">= 3.3\",\n    \">= 2.7\"\n", [">= 3.3", ">= 2.7"]],
+        "after ; on one line" => ["  s.name = 'w'; s.required_ruby_version = \">= 3.1\"\n", [">= 3.1"]],
+        "interpolation in a heredoc" => ["  s.description = <<~D\n    \#{s.required_ruby_version = \">= 2.7\"; nil}\n  D\n", [">= 2.7"]],
+        "=begin inside a heredoc" => ["  s.description = <<-D\n=begin\n  D\n  s.required_ruby_version = \">= 2.7\"\n", [">= 2.7"]],
+        "__END__ inside a heredoc" => ["  s.description = <<~D\n__END__\n  D\n  s.required_ruby_version = \">= 2.7\"\n", [">= 2.7"]],
+        "a branch Ruby may skip" => ["  if RUBY_ENGINE == 'jruby'\n    s.required_ruby_version = \">= 2.7\"\n  end\n  s.required_ruby_version = \">= 3.1\"\n", [">= 2.7", ">= 3.1"]]
+      }.each do |shape, (lines, floor)|
         gemspec = "Gem::Specification.new do |s|\n#{lines}end\n"
-        files = gem_with(requirement: "'>= 3.1'", matrix: %w[3.3]).merge("widget.gemspec" => gemspec)
-        expect(support_result(files).status).to eq(:missing_evidence), shape
+        discovered = Reanimator.discover(make_repo(files: narrowed_support.merge("widget.gemspec" => gemspec)))
+        expect([discovered.value(:supported_ruby), discovered.value(:supported_ruby_unreadable)]).to eq([floor, nil]), shape
       end
     end
 
@@ -468,9 +471,39 @@ RSpec.describe "escalation delivery" do
         expect(discovered.value(:supported_ruby_unreadable)).to include("load 'pipe'")
       end
 
-      it "treats a floor after a =begin never closed as unreadable" do
+      it "treats a file Ruby could not parse as unreadable" do
         files = {"widget.gemspec" => "Gem::Specification.new do |s|\n=begin\n  s.required_ruby_version = '>= 2.7'\nend\n"}
-        expect(floor_in(files).value(:supported_ruby_unreadable)).to include("sits after __END__ or inside =begin")
+        expect(floor_in(files).value(:supported_ruby_unreadable)).to eq("it does not parse as Ruby")
+      end
+
+      it "follows every load on a line, in parentheses, in a branch, and load from lib/ first" do
+        {
+          "second load after ;" => ["require_relative 'a'; require_relative 'gemspec'", {"a.rb" => ""}],
+          "parentheses" => ["require_relative('gemspec')", {}],
+          "Kernel.load" => ["Kernel.load 'gemspec.rb'", {}],
+          "load of a built path, as named" => ["load File.expand_path('gemspec.common', __dir__)", {"gemspec.common" => common}],
+          "a modifier Ruby may skip" => ["require_relative 'gemspec' if false", {}],
+          "load from lib/ before the root" => ["load 'gemspec.rb'", {"lib/gemspec.rb" => common, "gemspec.rb" => common.sub("3.2", "3.3")}]
+        }.each do |shape, (load, extra)|
+          files = gemspec_loading(load).merge("gemspec.rb" => common).merge(extra)
+          expect(floor_in(files).value(:supported_ruby)).to eq([">= 3.2"]), shape
+        end
+      end
+
+      it "treats a library require it cannot place exactly, eval and a loaded gemspec as unfollowed" do
+        repo = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(
+          gemspec_loading("require 'widget/version'"), "other/version.rb" => common, "lib/widget/.keep" => ""
+        ))
+        File.symlink(File.join(repo, "other/version.rb"), File.join(repo, "lib/widget/version.rb"))
+        expect(Reanimator.discover(repo).value(:supported_ruby_unreadable)).to include("require 'widget/version'")
+
+        {
+          "a path that is not normal" => ["require 'widget/../widget/version'", {"lib/widget/version.rb" => common}],
+          "eval of a file" => ["eval(File.read('gemspec.rb'))", {}],
+          "a loaded gemspec" => ["Gem::Specification.load('base.gemspec')", {}]
+        }.each do |shape, (load, extra)|
+          expect(floor_in(gemspec_loading(load).merge(extra)).value(:supported_ruby_unreadable)).to include(load), shape
+        end
       end
 
       it "keeps a literal floor in the gemspec when another load cannot be followed" do
@@ -479,14 +512,10 @@ RSpec.describe "escalation delivery" do
       end
     end
 
-    it "reads nothing after __END__ but fails closed on a floor mentioned there, and reads a Gem::Requirement.new floor" do
+    it "reads nothing after __END__, and reads a Gem::Requirement.new floor" do
       floor = "Gem::Specification.new do |s|\n  s.required_ruby_version = Gem::Requirement.new(\">= 3.1\")\nend\n__END__\n"
-      discovered = Reanimator.discover(make_repo(files: narrowed_support.merge("widget.gemspec" => "#{floor}notes\n")))
-      expect(discovered.value(:supported_ruby)).to eq([">= 3.1"])
-      expect(discovered.value(:supported_ruby_unreadable)).to be_nil
-
-      mentioned = narrowed_support.merge("widget.gemspec" => "#{floor}required_ruby_version notes\n")
-      expect(Reanimator.discover(make_repo(files: mentioned)).value(:supported_ruby_unreadable)).not_to be_nil
+      discovered = Reanimator.discover(make_repo(files: narrowed_support.merge("widget.gemspec" => "#{floor}s.required_ruby_version = '>= 2.7'\n")))
+      expect([discovered.value(:supported_ruby), discovered.value(:supported_ruby_unreadable)]).to eq([[">= 3.1"], nil])
     end
 
     it "reads a frozen literal, and a # inside a string is not a comment" do
