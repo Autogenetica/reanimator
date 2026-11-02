@@ -73,6 +73,14 @@ RSpec.describe Reanimator::RepairRun do
     expect(run.reason).to include("did not independently verify")
   end
 
+  it "safely stops rather than repair against a contract read in part" do
+    crash(Reanimator::Detectors::Relationships)
+    run = run_for(broken_repo(repair: :allowed))
+    expect(run.outcome).to eq(:safe_stop)
+    expect(run.reason).to include("the Relationships detector failed")
+    expect(run.pre_state).to be_nil # stopped before any check executed
+  end
+
   it "safely stops when no ready agent is available" do
     allow(Reanimator::Agents).to receive(:for).and_return(ScriptedAdapter.new(result: nil, available: false))
     run = run_for(broken_repo(repair: :allowed))

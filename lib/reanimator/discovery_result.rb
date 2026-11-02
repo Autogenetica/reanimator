@@ -7,12 +7,36 @@ module Reanimator
   class DiscoveryResult
     # The suggested profile with the reasoning behind it.
     Suggestion = Struct.new(:profile, :confidence, :reason)
+    # A detector that raised, so its facts are missing rather than absent.
+    Failure = Data.define(:detector, :error) do
+      def to_s = "the #{detector.name.split("::").last} detector failed (#{error})"
+    end
 
-    attr_reader :repository, :facts
+    attr_reader :repository, :facts, :failures
 
-    def initialize(repository:, facts:)
+    def initialize(repository:, facts:, failures: [])
       @repository = repository
       @facts = facts
+      @failures = failures
+    end
+
+    def complete? = failures.empty?
+
+    # Every failure in one phrase, e.g. "the Bundler detector failed (...)".
+    def failure_summary = failures.join("; ")
+
+    # Raises unless every detector ran: a contract read in part must not be
+    # recorded, compared or exported as if it were whole.
+    def ensure_complete!(use)
+      return if complete?
+
+      raise DiscoveryIncomplete, "#{repository&.full_name}: #{failure_summary}, so its contract was read in part and cannot be #{use}."
+    end
+
+    # The failure of this detector, or nil when it ran.
+    # @return [Failure, nil]
+    def failure(detector)
+      failures.find { |failure| failure.detector == detector }
     end
 
     # @return [DiscoveredFact, nil]

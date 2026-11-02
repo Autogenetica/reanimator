@@ -16,6 +16,7 @@ module Reanimator
         @discovery.by_category.each do |category, facts|
           sections << category_section(category, facts)
         end
+        sections << failures_section if @discovery.failures.any?
         sections << "No facts discovered." if @discovery.facts.empty?
         sections.join("\n\n")
       end
@@ -25,6 +26,11 @@ module Reanimator
       def suggested_profile
         s = @discovery.suggestion
         "Suggested profile: #{s.profile} (#{s.confidence}) — #{s.reason}"
+      end
+
+      def failures_section
+        lines = @discovery.failures.map { |failure| "  #{failure}; its facts are missing." }
+        (["not read:"] + lines).join("\n")
       end
 
       def category_section(category, facts)

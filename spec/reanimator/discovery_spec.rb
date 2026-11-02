@@ -158,6 +158,27 @@ RSpec.describe Reanimator::Discovery do
     expect(discover.facts).to eq([])
   end
 
+  it "does not crash on files that are not what they seem" do
+    workflow = "jobs:\n  t:\n    strategy: \"${{ fromJSON(needs.setup.outputs.strategy) }}\"\n  n:\n    strategy:\n      matrix:\n        ruby: [.nan, .inf, 3.3]\n"
+    root = make_repo(files: {"Gemfile" => "source 'x'\n", "package.json" => "[]", "web/package.json" => "{\"scripts\": []}", ".github/workflows/ci.yml" => workflow})
+    %w[.ruby-version config/routes.rb].each { |dir| FileUtils.mkdir_p(File.join(root, dir)) }
+    result = Reanimator::Discovery.new(Reanimator::Repository.at(root)).run
+
+    expect(result.failures).to eq([])
+    expect(result.all(:ci_ruby_matrix).flat_map { |fact| Array(fact.value) }).to contain_exactly("3.3")
+  end
+
+  it "records a detector that raised, so its missing facts are not read as absent" do
+    crash(Reanimator::Detectors::Bundler)
+    result = discover(files: {"Gemfile" => "source 'x'\n"})
+
+    expect(result.fact?(:bundler)).to be(false)
+    expect(result.failure(Reanimator::Detectors::Bundler).error).to eq("ArgumentError: boom")
+    expect(result.failure(Reanimator::Detectors::Commands)).to be_nil
+    expect(Reanimator::Reports::Discovery.new(result).render)
+      .to include("the Bundler detector failed (ArgumentError: boom); its facts are missing.")
+  end
+
   it "survives non-UTF-8 files and still detects the ecosystem" do
     path = make_repo(files: {"widget.gemspec" => "x"})
     # A Gemfile with an invalid byte would otherwise make the detector's regex
