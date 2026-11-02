@@ -559,7 +559,9 @@ RSpec.describe "escalation delivery" do
         floor = "Gem::Specification.new { |s| s.required_ruby_version = '>= 3.1' }\n"
         deep = "x = #{"!" * 30_000}1\n#{floor}"
         repo = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge("a.gemspec" => deep, "b.gemspec" => deep))
-        expect(Reanimator.discover(repo).value(:supported_ruby_unreadable)).to match(/nested too deeply|parsed safely/)
+        # Prism refuses it as a parse error on some platforms and overflows on
+        # others; either way that file's floor is unreadable and the run goes on.
+        expect(Reanimator.discover(repo).value(:supported_ruby_unreadable)).to match(/nested too deeply|parsed safely|does not parse/)
 
         expect(floor_in("widget.gemspec" => "x = #{"[" * 5000}#{"]" * 5000}\n#{floor}").value(:supported_ruby)).to eq([">= 3.1"])
         expect(floor_in("widget.gemspec" => "#{"# padding\n" * 30_000}#{floor}").value(:supported_ruby_unreadable))
