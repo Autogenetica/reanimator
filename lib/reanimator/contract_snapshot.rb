@@ -58,10 +58,7 @@ module Reanimator
       discovery = contract.discovery
       # A contract read in part would record a crash as a policy change, or
       # compare as one - neither is a decision anyone made.
-      unless discovery.complete?
-        raise DiscoveryIncomplete, "#{contract.repository.full_name}: #{discovery.failures.join("; ")}, " \
-          "so its contract was read in part and cannot be recorded or compared."
-      end
+      discovery.ensure_complete!("recorded or compared")
 
       new(
         repository: contract.repository.full_name,

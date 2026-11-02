@@ -9,7 +9,7 @@ module Reanimator
     Suggestion = Struct.new(:profile, :confidence, :reason)
     # A detector that raised, so its facts are missing rather than absent.
     Failure = Data.define(:detector, :error) do
-      def to_s = "#{detector} failed (#{error})"
+      def to_s = "the #{detector.name.split("::").last} detector failed (#{error})"
     end
 
     attr_reader :repository, :facts, :failures
@@ -21,6 +21,14 @@ module Reanimator
     end
 
     def complete? = failures.empty?
+
+    # Raises unless every detector ran: a contract read in part must not be
+    # recorded, compared or exported as if it were whole.
+    def ensure_complete!(use)
+      return if complete?
+
+      raise DiscoveryIncomplete, "#{repository&.full_name}: #{failures.join("; ")}, so its contract was read in part and cannot be #{use}."
+    end
 
     # The failure of this detector, or nil when it ran.
     # @return [Failure, nil]

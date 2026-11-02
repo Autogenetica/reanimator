@@ -26,6 +26,11 @@ module Reanimator
       # A baseline that never ran has no failures to find; reading that as
       # "all required criteria pass" would turn a refusal into a clean bill.
       return record(:safe_stop, pre: pre, reason: unexecuted_reason(pre)) unless pre.executed?
+      # A contract read in part may be missing the very obligation a repair
+      # would have to keep, so nothing is proposed against it.
+      unless @contract.discovery.complete?
+        return record(:safe_stop, pre: pre, reason: "Repair needs the whole contract: #{@contract.discovery.failures.join("; ")}.")
+      end
 
       target = pre.first_failing_required_criterion
       unless target

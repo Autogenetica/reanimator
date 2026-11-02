@@ -76,8 +76,10 @@ module Reanimator
     #   as UTF-8 and scrubbed so a detector's regex or slice can never raise on
     #   a stray byte (which would otherwise be swallowed as a "detector failed"
     #   and silently drop facts), including under a C/US-ASCII locale.
+    # A directory where a file is expected is not that file, so it reads as
+    # absent; a file that exists but cannot be read still raises.
     def read(relative)
-      return unless exist?(relative)
+      return unless File.file?(absolute(relative))
 
       File.read(absolute(relative), encoding: "UTF-8").scrub
     end

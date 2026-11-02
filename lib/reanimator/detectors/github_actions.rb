@@ -102,7 +102,10 @@ module Reanimator
       # whatever exclude: removes, plus include: entries - the order Actions
       # applies them in. Values are kept as the workflow wrote them.
       def matrix_rubies(job)
-        matrix = job.dig("strategy", "matrix")
+        # A strategy written as one expression is read nowhere, so it credits
+        # nothing - Reanimator under-credits rather than guesses.
+        strategy = job["strategy"]
+        matrix = strategy["matrix"] if strategy.is_a?(Hash)
         return [] unless matrix.is_a?(Hash)
 
         (listed_rubies(matrix) + included_rubies(matrix)).map { |value| ruby_label(value) }
@@ -190,7 +193,7 @@ module Reanimator
       # which setup-ruby reads as the latest 3.x - so a whole float is a bare
       # major, not 3.0.
       def ruby_label(value)
-        (value.is_a?(Float) && value == value.floor) ? value.to_i.to_s : value.to_s
+        (value.is_a?(Float) && value.finite? && value == value.floor) ? value.to_i.to_s : value.to_s
       end
 
       def security_facts(workflows)

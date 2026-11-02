@@ -76,6 +76,10 @@ module Reanimator
     def declared_criteria
       checks = declared&.acceptance&.dig(:checks) || []
       checks.map do |check|
+        if check[:id].to_s == BaselineRunner::DISCOVERY_COMPLETE.id.to_s
+          raise ContractError, "Check id #{check[:id]} is reserved for Reanimator's own discovery check."
+        end
+
         AcceptanceCriterion.new(
           id: check[:id] || "declared-#{check.object_id}",
           claim: check[:claim] || "Owner-declared check #{check[:id]}.",
