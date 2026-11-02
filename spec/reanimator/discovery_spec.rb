@@ -216,8 +216,8 @@ RSpec.describe Reanimator::Discovery do
     File.symlink("docs/SECURITY.md", File.join(root, "POLICY.md"))
     repository = Reanimator::Repository.at(root)
 
-    expect(%w[SECURITY.md .github/dependabot.yml].map { |file| [repository.exist?(file), repository.read(file)] })
-      .to eq([[false, nil], [false, nil]])
+    expect(%w[SECURITY.md .github .github/dependabot.yml].map { |file| [repository.exist?(file), repository.read(file)] })
+      .to eq([[false, nil], [false, nil], [false, nil]])
     expect([repository.exist?("POLICY.md"), repository.read("POLICY.md")]).to eq([true, "inside"])
     expect(repository.exist?("../#{File.basename(outside)}/SEC")).to be(false)
   end

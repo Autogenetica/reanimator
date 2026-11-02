@@ -76,19 +76,24 @@ module Reanimator
       []
     end
 
-    # A path written inside the root - neither absolute nor through `..` -
-    # whose real path is inside it too. Every read goes through it: a
-    # symlink in the repository must not make a file outside it count as
-    # evidence.
-    def inside?(match)
-      return false if match.start_with?("/") || match.split("/").include?("..")
+    # Whether a path is written inside the root - neither absolute nor
+    # through `..` - and its real path is inside it too. exist?, read and
+    # glob all go through it, so a symlink in the repository cannot make a
+    # file outside it count as evidence. (.reanimator.yml, the snapshot and
+    # Isolation's copy are read elsewhere, and are not held to it yet.)
+    def inside?(match) = !contained(match).nil?
+    private :inside?
+
+    # The real path of a path inside the repository, or nil.
+    def contained(match)
+      return if match.start_with?("/") || match.split("/").include?("..")
 
       real = File.realpath(match, path)
-      real == real_root || real.start_with?("#{real_root}/")
+      real if real == real_root || real.start_with?("#{real_root}/")
     rescue SystemCallError
-      false
+      nil
     end
-    private :inside?
+    private :contained
 
     def real_root = @real_root ||= File.realpath(path)
     private :real_root
@@ -107,9 +112,10 @@ module Reanimator
     # behind a directory it cannot search is not seen at all, and reads as
     # absent - as File.exist? did before.
     def read(relative)
-      return unless File.file?(absolute(relative)) && inside?(relative)
-
-      File.read(absolute(relative), encoding: "UTF-8").scrub
+      real = contained(relative)
+      # The real path checked is the one read, so a link swapped in between
+      # cannot lead the read elsewhere.
+      File.read(real, encoding: "UTF-8").scrub if real && File.file?(real)
     end
 
     def to_h
