@@ -17,10 +17,23 @@ module Reanimator
       LITERAL_SCAFFOLD = /\A[\s\[\](),]*[\s;}]*\z/
       GEMFILE_RUBY = /^\s*ruby\s+['"]([^'"]+)['"]/
 
+      # How a gemspec loads another file, e.g. `require_relative "lib/w/version"`.
+      LOAD = /(?:\A|;)\s*(require_relative|require|load)\b[\s(]+(.*)/
+      # A load path written as a literal, or built from one beside the loading
+      # file: File.expand_path("x", __dir__) or File.expand_path("../x", __FILE__).
+      LITERAL_PATH = /\A["']([^"'#]*)["']/
+      EXPANDED_PATH = /\AFile\.expand_path\(\s*["']([^"'#]*)["']\s*,\s*(__dir__|__FILE__|File\.dirname\(__FILE__\))\s*\)/
+      # How many levels of loads Reanimator follows from a gemspec.
+      MAX_LOAD_DEPTH = 4
+
+      # A line that carries on the expression above it: a method chain or a
+      # boolean operator at the start of the next line changes the value.
+      CONTINUATION = /\A\s*(?:\.|&\.|&&|\|\||and\b|or\b)/
+
       # A single declared runtime version paired with the file it came from.
       Pin = Struct.new(:version, :source)
-      # What one gemspec declares: its literal requirements, or the first line
-      # that could not be read as one.
+      # What one gemspec declares: its literal requirements, or why they could
+      # not be read.
       GemspecFloor = Struct.new(:path, :requirements, :unreadable)
 
       def detect
@@ -78,33 +91,44 @@ module Reanimator
       # floor was found: then the floor may be in that file, and "no floor"
       # would credit any matrix.
       def read_gemspec(gemspec)
-        requirements, unfollowed, seen = [], nil, Set.new
+        requirements = []
+        unfollowed = each_source(gemspec) do |file, body|
+          return [[], "#{relative(file)} could not be read"] unless body
+
+          found, unreadable = read_floor(body)
+          return [[], file_reason(unreadable, file, gemspec)] if unreadable
+
+          requirements.concat(found)
+        end
+        (requirements.empty? && unfollowed) ? [[], unfollowed] : [requirements.uniq, nil]
+      end
+
+      # Yields the gemspec and each repository file it loads, breadth first,
+      # with its text (nil when unreadable). Returns why a load could not be
+      # followed, or nil.
+      def each_source(gemspec)
+        unfollowed, seen = nil, Set.new
         pending = [[real_path(repository.absolute(gemspec)), 0]]
         until pending.empty?
           file, depth = pending.shift
           next unless seen.add?(file)
 
-          body = read_source(file) or return [[], "#{relative(file)} could not be read"]
-          found, unreadable = read_floor(body)
-          return [[], file_reason(unreadable, file, gemspec)] if unreadable
+          body = read_source(file)
+          yield file, body
+          next unless body
 
-          requirements.concat(found)
           loads, unfollowable = loaded_files(body, file)
           unfollowed ||= unfollowable && "it loads `#{unfollowable}`, which Reanimator cannot follow"
-          unfollowed ||= "it loads files more than #{MAX_LOAD_DEPTH} levels deep" if loads.any? && depth >= MAX_LOAD_DEPTH
-          pending.concat(loads.map { |path| [path, depth + 1] }) if depth < MAX_LOAD_DEPTH
-        end
-        (requirements.empty? && unfollowed) ? [[], unfollowed] : [requirements.uniq, nil]
-      end
+          next if loads.empty?
 
-      # How a gemspec loads another file, e.g. `require_relative "lib/w/version"`.
-      LOAD = /(?:\A|;)\s*(require_relative|require|load)\b[\s(]+(.*)/
-      # A load path written as a literal, or built from one beside the loading
-      # file: File.expand_path("x", __dir__) or File.expand_path("../x", __FILE__).
-      LITERAL_PATH = /\A["']([^"'#]*)["']/
-      EXPANDED_PATH = /\AFile\.expand_path\(\s*["']([^"'#]*)["']\s*,\s*(__dir__|__FILE__|File\.dirname\(__FILE__\))\s*\)/
-      # How many levels of loads Reanimator follows from a gemspec.
-      MAX_LOAD_DEPTH = 4
+          if depth < MAX_LOAD_DEPTH
+            pending.concat(loads.map { |path| [path, depth + 1] })
+          else
+            unfollowed ||= "it loads files more than #{MAX_LOAD_DEPTH} levels deep"
+          end
+        end
+        unfollowed
+      end
 
       # The repository files this body loads, and the first load Reanimator
       # could not follow, or nil.
@@ -200,10 +224,6 @@ module Reanimator
         end
         [requirements.uniq, nil]
       end
-
-      # A line that carries on the expression above it: a method chain or a
-      # boolean operator at the start of the next line changes the value.
-      CONTINUATION = /\A\s*(?:\.|&\.|&&|\|\||and\b|or\b)/
 
       # Whether the value carries on past the assignment (and any array it
       # spans), so the literal is not what Ruby assigns: a trailing comma
