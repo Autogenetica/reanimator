@@ -125,6 +125,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `../other/README` cannot be satisfied by a file outside the repository. A
   pattern Ruby refuses, such as one with a NUL byte, matches nothing instead
   of ending the run.
+- **A symlink out of the repository no longer counts as evidence.**
+  `SECURITY.md -> ../elsewhere/SEC`, a `.github` linked to another
+  directory, or an `examples/` link out were credited as the repository's own
+  security policy, Dependabot configuration and examples. Detectors' and
+  evaluators' reads of repository files - `exist?` and `read` as well as
+  globs - now require the real path to lie inside the repository; a symlink
+  to a file inside it still counts. (`.reanimator.yml`, the drift snapshot
+  and the disposable copy for executed checks are read elsewhere and are
+  not held to this yet.)
 
 ## [0.1.0] - 2026-10-28
 

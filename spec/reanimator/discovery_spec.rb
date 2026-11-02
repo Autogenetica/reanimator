@@ -208,6 +208,20 @@ RSpec.describe Reanimator::Discovery do
     expect(repository.glob("a\0b")).to eq([])
   end
 
+  it "does not count a file reached through a symlink out of the repository" do
+    outside = make_repo(files: {"SEC" => "report to x", "dependabot.yml" => "version: 2\n"})
+    root = make_repo(files: {"README.md" => "# w", "docs/SECURITY.md" => "inside"})
+    File.symlink(File.join(outside, "SEC"), File.join(root, "SECURITY.md"))
+    File.symlink(outside, File.join(root, ".github"))
+    File.symlink("docs/SECURITY.md", File.join(root, "POLICY.md"))
+    repository = Reanimator::Repository.at(root)
+
+    expect(%w[SECURITY.md .github .github/dependabot.yml].map { |file| [repository.exist?(file), repository.read(file)] })
+      .to eq([[false, nil], [false, nil], [false, nil]])
+    expect([repository.exist?("POLICY.md"), repository.read("POLICY.md")]).to eq([true, "inside"])
+    expect(repository.exist?("../#{File.basename(outside)}/SEC")).to be(false)
+  end
+
   it "survives non-UTF-8 files and still detects the ecosystem" do
     path = make_repo(files: {"widget.gemspec" => "x"})
     # A Gemfile with an invalid byte would otherwise make the detector's regex
