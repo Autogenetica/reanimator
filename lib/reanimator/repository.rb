@@ -65,8 +65,8 @@ module Reanimator
     #   Globbed from the root rather than trimmed from absolute paths: on a
     #   case-insensitive filesystem the matches come back in their real case,
     #   which a root given in another case would not trim.
-    #   Evidence comes from the repository or not at all, so a match is kept
-    #   only when its real path lies inside the root's: glob syntax is too
+    #   Globbed evidence comes from the repository or not at all, so a match
+    #   is kept only when its real path lies inside the root's: glob syntax is too
     #   rich to judge by the pattern - braces, escapes and a symlink can each
     #   lead out - so the matches themselves are judged.
     def glob(pattern)

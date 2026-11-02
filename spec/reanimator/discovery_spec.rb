@@ -198,6 +198,12 @@ RSpec.describe Reanimator::Discovery do
     expect(Reanimator::Repository.at(root).glob("*.gemspec")).to eq(["widget.gemspec"])
     outside = %w[/etc/hosts* ../*.gemspec ./../* {/etc/hosts,x} {..,x}/* \\../* link/*]
     File.symlink(make_repo(files: {"SECRET" => "x"}), File.join(root, "sub", "link"))
+    # A sibling whose name extends the root's is still outside it.
+    FileUtils.mkdir_p("#{root}/sub-evil")
+    File.write("#{root}/sub-evil/SECRET", "x")
+    File.symlink("../sub-evil/SECRET", File.join(root, "sub", "README"))
+    File.symlink("nowhere", File.join(root, "sub", "BROKEN"))
+    expect(repository.glob("*")).to eq(["."])
     expect(outside.to_h { |pattern| [pattern, repository.glob(pattern)] }).to eq(outside.to_h { |pattern| [pattern, []] })
     expect(repository.glob("a\0b")).to eq([])
   end
