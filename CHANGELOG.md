@@ -111,6 +111,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   absent, a `package.json` that is not an object has no scripts, and a
   workflow `strategy` written as one expression - or a `.nan` in a matrix -
   credits nothing rather than crashing.
+- **A repository named in another case is read in full.** On a
+  case-insensitive filesystem, `baseline /path/SRC/repo` for a repository at
+  `/path/src/repo` globbed every file back in its real case, failed to trim
+  the root off, and so lost each gemspec: the declared floor vanished and
+  `support_matrix` reported nothing to verify. Paths are now globbed from the
+  root itself.
 
 ## [0.1.0] - 2026-10-28
 

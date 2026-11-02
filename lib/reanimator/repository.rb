@@ -61,11 +61,12 @@ module Reanimator
     # @return [Boolean] whether a repository-relative path exists
     def exist?(relative) = File.exist?(absolute(relative))
 
-    # @return [Array<String>] repository-relative paths matching a glob
+    # @return [Array<String>] repository-relative paths matching a glob.
+    #   Globbed from the root rather than trimmed from absolute paths: on a
+    #   case-insensitive filesystem the matches come back in their real case,
+    #   which a root given in another case would not trim.
     def glob(pattern)
-      Dir.glob(File.join(path, pattern), File::FNM_DOTMATCH)
-        .map { |absolute| absolute.delete_prefix("#{path}/") }
-        .sort
+      Dir.glob(pattern, File::FNM_DOTMATCH, base: path).sort
     end
 
     # @return [Boolean] whether any path matches the glob

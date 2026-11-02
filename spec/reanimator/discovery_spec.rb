@@ -179,6 +179,16 @@ RSpec.describe Reanimator::Discovery do
       .to include("the Bundler detector failed (ArgumentError: boom); its facts are missing.")
   end
 
+  it "reads a repository named in another case, as a case-insensitive filesystem allows" do
+    path = make_repo(files: {"widget.gemspec" => "Gem::Specification.new { |s| s.required_ruby_version = '>= 3.1' }\n"})
+    variant = File.join(File.dirname(path), File.basename(path).swapcase)
+    skip "the filesystem is case-sensitive" unless File.directory?(variant)
+
+    result = Reanimator::Discovery.new(Reanimator::Repository.at(variant)).run
+    expect(result.value(:supported_ruby)).to eq([">= 3.1"])
+    expect(Reanimator::Repository.at(variant).glob("*.gemspec")).to eq(["widget.gemspec"])
+  end
+
   it "survives non-UTF-8 files and still detects the ecosystem" do
     path = make_repo(files: {"widget.gemspec" => "x"})
     # A Gemfile with an invalid byte would otherwise make the detector's regex

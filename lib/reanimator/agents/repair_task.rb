@@ -37,11 +37,7 @@ module Reanimator
         File.read(full) if File.file?(full)
       end
 
-      def glob(pattern)
-        Dir.glob(File.join(workspace, pattern))
-          .map { |absolute| absolute.delete_prefix("#{workspace}/") }
-          .sort
-      end
+      def glob(pattern) = Dir.glob(pattern, base: workspace).sort
 
       # Whether a path is inside the constraints' allowed set (and outside the
       # protected set). Adapters should honor this; the harness enforces it.
