@@ -168,6 +168,12 @@ RSpec.describe Reanimator::Discovery do
     expect(result.all(:ci_ruby_matrix).flat_map { |fact| Array(fact.value) }).to contain_exactly("3.3")
   end
 
+  it "records a detector that overflowed the stack, which is not a StandardError" do
+    crash(Reanimator::Detectors::Bundler, SystemStackError.new("stack level too deep"))
+    expect(discover(files: {"Gemfile" => "source 'x'\n"}).failure(Reanimator::Detectors::Bundler).error)
+      .to eq("SystemStackError: stack level too deep")
+  end
+
   it "records a detector that raised, so its missing facts are not read as absent" do
     crash(Reanimator::Detectors::Bundler)
     result = discover(files: {"Gemfile" => "source 'x'\n"})

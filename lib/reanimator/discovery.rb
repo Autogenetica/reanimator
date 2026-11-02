@@ -32,7 +32,7 @@ module Reanimator
       failures = []
       facts = detectors.flat_map do |klass|
         klass.new(repository).call
-      rescue => e
+      rescue StandardError, SystemStackError => e
         # A misbehaving detector must never sink the whole observation; record
         # the failure and keep going. Its facts are missing, not absent, so the
         # failure travels with the result: an evaluator that reads "no fact" as

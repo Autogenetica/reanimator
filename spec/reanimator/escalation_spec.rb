@@ -2,6 +2,8 @@
 
 require "json"
 require "open3"
+require "tempfile"
+require "timeout"
 
 # Section 16: an escalation has to reach a human without anyone reading a
 # terminal. The CLI's exit status carries it everywhere; inside GitHub Actions
@@ -240,7 +242,7 @@ RSpec.describe "escalation delivery" do
       expect(support_result(gem_with(requirement: "'>= 3.0'", workflow: workflow)).status).to eq(:missing_evidence)
     end
 
-    it "ignores a lower floor inside a =begin block" do
+    it "ignores a floor inside a =begin block, which Ruby never runs" do
       gemspec = "Gem::Specification.new do |s|\n=begin\n  s.required_ruby_version = \">= 2.7\"\n=end\n  s.required_ruby_version = \">= 3.1\"\nend\n"
       files = gem_with(requirement: "'>= 3.1'", matrix: %w[3.1 3.4]).merge("widget.gemspec" => gemspec)
       expect(support_result(files)).to be_verified
@@ -273,7 +275,6 @@ RSpec.describe "escalation delivery" do
     it "reports a floor it cannot read as missing evidence, never as no floor" do
       {
         "constant" => "  s.required_ruby_version = MIN_RUBY\n",
-        "%q()" => "  s.required_ruby_version = %q(>= 3.1)\n",
         "interpolation" => "  s.required_ruby_version = \">= \#{MIN}\"\n",
         "lookup" => "  s.required_ruby_version = gemspec['required_ruby_version']\n",
         "heredoc" => "  s.required_ruby_version = <<~R.strip\n    >= 3.1\n  R\n"
@@ -287,16 +288,24 @@ RSpec.describe "escalation delivery" do
       end
     end
 
-    it "treats any mention it cannot read as a literal assignment as an unreadable floor" do
+    it "treats any other way of reaching the floor as an unreadable floor" do
       {
-        "value on the next line" => "  s.required_ruby_version =\n    \">= 3.1\"\n",
-        "requirement over lines" => "  s.required_ruby_version = Gem::Requirement.new(\n    \">= 3.1\"\n  )\n",
         "send" => "  s.send(:required_ruby_version=, \">= 3.1\")\n",
-        "instance variable" => "  @spec.required_ruby_version = \">= 3.1\"\n",
+        "send with a string" => "  s.public_send(\"required_ruby_version=\", \">= 3.1\")\n",
+        "send with adjacent literals" => "  s.public_send(\"required_\" \"ruby_version=\", \">= 3.1\")\n",
+        "instance_variable_set" => "  s.instance_variable_set(:@required_ruby_version, Gem::Requirement.new(\">= 3.1\"))\n",
         "or-assign" => "  s.required_ruby_version ||= \">= 3.1\"\n",
-        "leading-dot chain" => "  s\n    .required_ruby_version = \">= 3.1\"\n",
-        "comparison" => "  raise unless s.required_ruby_version == \">= 3.4\"\n  s.required_ruby_version = \">= 3.1\"\n",
-        "description" => "  s.description = \"needs required_ruby_version 3.4\"\n  s.required_ruby_version = \">= 3.1\"\n"
+        "and-assign" => "  s.required_ruby_version &&= \">= 3.1\"\n",
+        "instance_variable_set with a string" => "  s.instance_variable_set(\"@required_ruby_version\", \">= 3.1\")\n",
+        "the instance variable itself" => "  s.instance_eval { @required_ruby_version = Gem::Requirement.new(\">= 3.1\") }\n",
+        "a method named for the floor" => "  def s.required_ruby_version=(v)\n    super(\">= 2.7\")\n  end\n",
+        "eval beside a literal floor" => "  s.required_ruby_version = \">= 3.3\"\n  binding.eval(File.read(\"shared.rb\"))\n",
+        "multiple assignment" => "  s.required_ruby_version, x = \">= 3.1\", 1\n",
+        "eval" => "  s.instance_eval(\"self.required_ruby_version = '>= 3.1'\")\n",
+        "next-line method chain" => "  s.required_ruby_version = \">= 3.3\"\n    .sub(\"3.3\", \"2.7\")\n",
+        "next-line safe navigation" => "  s.required_ruby_version = \">= 3.3\"\n    &.sub(\"3.3\", \"2.7\")\n",
+        "next-line &&" => "  s.required_ruby_version = \">= 3.3\"\n    && \">= 2.7\"\n",
+        "next-line ||" => "  s.required_ruby_version = \">= 3.3\"\n    || \">= 2.7\"\n"
       }.each do |shape, lines|
         gemspec = "Gem::Specification.new do |s|\n#{lines}end\n"
         files = gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge("widget.gemspec" => gemspec)
@@ -304,6 +313,312 @@ RSpec.describe "escalation delivery" do
         expect(result.status).to eq(:missing_evidence), shape
         expect(result.detail).to include("Write the floor as a string literal"), shape
       end
+    end
+
+    it "reads what Ruby assigns, however it is laid out" do
+      {
+        "value on the next line" => ["  s.required_ruby_version =\n    \">= 3.1\"\n", [">= 3.1"]],
+        "requirement over lines" => ["  s.required_ruby_version = Gem::Requirement.new(\n    \">= 3.1\"\n  )\n", [">= 3.1"]],
+        "instance variable" => ["  @spec.required_ruby_version = \">= 3.1\"\n", [">= 3.1"]],
+        "leading-dot chain" => ["  s\n    .required_ruby_version = \">= 3.1\"\n", [">= 3.1"]],
+        "comparison" => ["  raise unless s.required_ruby_version == \">= 3.4\"\n  s.required_ruby_version = \">= 3.1\"\n", [">= 3.1"]],
+        "description" => ["  s.description = \"needs required_ruby_version 3.4\"\n  s.required_ruby_version = \">= 3.1\"\n", [">= 3.1"]],
+        "%q()" => ["  s.required_ruby_version = %q(>= 3.1)\n", [">= 3.1"]],
+        "trailing comma" => ["  s.required_ruby_version = \">= 3.3\",\n    \">= 2.7\"\n", [">= 3.3", ">= 2.7"]],
+        "after ; on one line" => ["  s.name = 'w'; s.required_ruby_version = \">= 3.1\"\n", [">= 3.1"]],
+        "interpolation in a heredoc" => ["  s.description = <<~D\n    \#{s.required_ruby_version = \">= 2.7\"; nil}\n  D\n", [">= 2.7"]],
+        "=begin inside a heredoc" => ["  s.description = <<-D\n=begin\n  D\n  s.required_ruby_version = \">= 2.7\"\n", [">= 2.7"]],
+        "__END__ inside a heredoc" => ["  s.description = <<~D\n__END__\n  D\n  s.required_ruby_version = \">= 2.7\"\n", [">= 2.7"]],
+        "a branch Ruby may skip" => ["  if RUBY_ENGINE == 'jruby'\n    s.required_ruby_version = \">= 2.7\"\n  end\n  s.required_ruby_version = \">= 3.1\"\n", [">= 2.7", ">= 3.1"]]
+      }.each do |shape, (lines, floor)|
+        gemspec = "Gem::Specification.new do |s|\n#{lines}end\n"
+        discovered = Reanimator.discover(make_repo(files: narrowed_support.merge("widget.gemspec" => gemspec)))
+        expect([discovered.value(:supported_ruby), discovered.value(:supported_ruby_unreadable)]).to eq([floor, nil]), shape
+      end
+    end
+
+    describe "a floor set in a file the gemspec loads" do
+      def floor_in(files) = Reanimator.discover(make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(files)))
+
+      def gemspec_loading(load) = {"widget.gemspec" => "#{load}\nGem::Specification.new { |s| common_spec(s) }\n"}
+
+      let(:common) { "def common_spec(s)\n  s.required_ruby_version = '>= 3.2'\nend\n" }
+
+      it "is read through each way a gemspec names a local file" do
+        {
+          "require_relative" => ["require_relative './gemspec'", "gemspec.rb"],
+          "Kernel.load" => ["Kernel.load 'gemspec.rb'", "gemspec.rb"],
+          "require from lib" => ["require 'widget/gemspec'", "lib/widget/gemspec.rb"],
+          "expand_path from __dir__" => ["require File.expand_path('gemspec', __dir__)", "gemspec.rb"],
+          "expand_path from __FILE__" => ["require File.expand_path('../lib/common', __FILE__)", "lib/common.rb"],
+          "dirname joined" => ["require File.dirname(__FILE__) + '/lib/common'", "lib/common.rb"],
+          "require from the root" => ["require './gemspec'", "gemspec.rb"],
+          "a file named with ~" => ["require_relative '~common'", "~common.rb"]
+        }.each do |shape, (load, path)|
+          expect(floor_in(gemspec_loading(load).merge(path => common)).value(:supported_ruby)).to eq([">= 3.2"]), shape
+        end
+      end
+
+      it "follows nested loads relative to the file that loads them" do
+        files = gemspec_loading("require_relative 'lib/widget/spec_helper'").merge(
+          "lib/widget/spec_helper.rb" => "require_relative 'common'\n",
+          "lib/widget/common.rb" => common
+        )
+        expect(floor_in(files).value(:supported_ruby)).to eq([">= 3.2"])
+        expect(support_result(gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(files)).status).to eq(:missing_evidence)
+      end
+
+      it "reads each file whole, so __END__ in one does not hide the next" do
+        files = {
+          "widget.gemspec" => "require_relative 'lib/widget/version'\nrequire_relative 'gemspec'\nGem::Specification.new { |s| common_spec(s) }\n__END__\nnotes\n",
+          "lib/widget/version.rb" => "module Widget; VERSION = '1'; end\n__END__\nnotes\n",
+          "gemspec.rb" => common
+        }
+        expect(floor_in(files).value(:supported_ruby)).to eq([">= 3.2"])
+      end
+
+      it "reads files as UTF-8 whatever the locale" do
+        files = {
+          "widget.gemspec" => "require_relative 'lib/widget/version'\nGem::Specification.new { |s| s.authors = ['J\u00F6rg']; s.required_ruby_version = '>= 2.7' }\n",
+          "lib/widget/version.rb" => "# Copyright \u00A9 2024\nmodule Widget; VERSION = '1'; end\n"
+        }
+        external = Encoding.default_external
+        Encoding.default_external = Encoding::US_ASCII
+        expect(floor_in(files).value(:supported_ruby)).to eq([">= 2.7"])
+      ensure
+        Encoding.default_external = external
+      end
+
+      it "treats a load it cannot follow as an unreadable floor when no floor was found" do
+        outside = Dir.mktmpdir("reanimator-outside")
+        File.write(File.join(outside, "shared.rb"), common)
+        repo = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(gemspec_loading("require_relative 'shared'")))
+        File.symlink(File.join(outside, "shared.rb"), File.join(repo, "shared.rb"))
+        expect(Reanimator.discover(repo).value(:supported_ruby_unreadable)).to include("require_relative 'shared'")
+
+        {
+          "outside the repository" => "require_relative '../shared'",
+          "an absolute path" => "require_relative '#{File.realpath(outside)}/shared'",
+          "a missing file" => "require_relative 'nowhere'",
+          "a built path" => "require File.join(__dir__, 'gemspec')",
+          "a suffix added" => "require_relative 'gemspec' + '_low'",
+          "an adjacent literal" => "require_relative 'gemspec' '_low'",
+          "a joined path with a suffix" => "require File.dirname(__FILE__) + '/gemspec' + '_low'",
+          "a joined path without a slash" => "require __dir__ + 'gemspec'",
+          "load of ~" => "load '~gemspec.rb'",
+          "require of ~" => "require '~gemspec'",
+          "expand_path of ~" => "require File.expand_path('~/gemspec', __dir__)"
+        }.each do |shape, load|
+          discovered = floor_in(gemspec_loading(load).merge("gemspec.rb" => common, "~gemspec.rb" => common, "~/gemspec.rb" => common, "lib/~gemspec.rb" => common))
+          expect(discovered.value(:supported_ruby_unreadable)).to include(load), shape
+          expect(discovered.value(:supported_ruby)).to be_nil, shape
+        end
+      ensure
+        FileUtils.rm_rf(outside)
+      end
+
+      it "does not follow loads through a symlink, which Ruby resolves from where the link sits" do
+        repo = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(
+          gemspec_loading("require_relative 'lib/linked'"), "other/common.rb" => common, "lib/widget.rb" => ""
+        ))
+        File.symlink(File.join(repo, "other/common.rb"), File.join(repo, "lib/linked.rb"))
+        expect(Reanimator.discover(repo).value(:supported_ruby_unreadable)).to include("require_relative 'lib/linked'")
+
+        linked = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(
+          "sub/real.gemspec" => "require_relative 'common'\nGem::Specification.new { |s| common_spec(s) }\n", "sub/common.rb" => common
+        ).except("widget.gemspec"))
+        File.symlink(File.join(linked, "sub/real.gemspec"), File.join(linked, "widget.gemspec"))
+        expect(Reanimator.discover(linked).value(:supported_ruby_unreadable)).to include("it is a symlink")
+      end
+
+      it "treats a loaded file it cannot read as an unreadable floor" do
+        skip "root reads anything" if Process.uid.zero?
+        repo = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(gemspec_loading("require_relative 'gemspec'"), "gemspec.rb" => common))
+        File.chmod(0o000, File.join(repo, "gemspec.rb"))
+        expect(Reanimator.discover(repo).value(:supported_ruby_unreadable)).to eq("gemspec.rb could not be read")
+      ensure
+        File.chmod(0o644, File.join(repo, "gemspec.rb")) if repo
+      end
+
+      it "follows four levels of loads, a cycle once, and neither a commented-out load nor a load with .rb added" do
+        chain = (1..5).to_h { |n| ["level#{n}.rb", (n == 5) ? common : "require_relative 'level#{n + 1}'\n"] }
+        expect(floor_in(gemspec_loading("require_relative 'level1'").merge(chain.except("level5.rb"), "level4.rb" => common))
+          .value(:supported_ruby)).to eq([">= 3.2"])
+        expect(floor_in(gemspec_loading("require_relative 'level1'").merge(chain)).value(:supported_ruby_unreadable))
+          .to eq("it loads files more than 4 levels deep")
+
+        cycle = gemspec_loading("require_relative 'a'").merge("a.rb" => "require_relative 'b'\n", "b.rb" => "require_relative 'a'\n")
+        commented = gemspec_loading("# was: require 'x'; require_relative 'nowhere'")
+        exact = gemspec_loading("Kernel.load 'gemspec.common'").merge("gemspec.common" => common)
+        expect([cycle, commented].map { |files| floor_in(files).value(:supported_ruby_unreadable) }).to eq([nil, nil])
+        expect(floor_in(exact).value(:supported_ruby)).to eq([">= 3.2"])
+      end
+
+      it "settles an unfollowed load only with a floor in the gemspec itself" do
+        files = gemspec_loading("require_relative 'gemspec'\nrequire File.join(__dir__, 'platform')").merge("gemspec.rb" => common)
+        expect(floor_in(files).value(:supported_ruby_unreadable)).to include("File.join(__dir__, 'platform')")
+      end
+
+      it "treats a path Ruby could not use as unfollowed, never as a crash" do
+        allow(Reanimator.logger).to receive(:warn)
+        {"home directory" => "load '~nosuchuser/x.rb' if false", "null byte" => "require_relative \"a\u0000b\" if false"}.each do |shape, load|
+          files = {"widget.gemspec" => "#{load}\nGem::Specification.new { |s| s.required_ruby_version = '>= 3.1' }\n"}
+          expect(floor_in(files).value(:supported_ruby)).to eq([">= 3.1"]), shape
+        end
+        expect(Reanimator.logger).not_to have_received(:warn)
+      end
+
+      it "reads a loaded file with invalid bytes, and never opens a FIFO it names" do
+        invalid = gemspec_loading("require_relative 'gemspec'").merge("gemspec.rb" => "MARK = \"\xFF\"\n#{common}".b)
+        expect(floor_in(invalid).value(:supported_ruby)).to eq([">= 3.2"])
+
+        repo = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(gemspec_loading("Kernel.load 'pipe'")))
+        File.mkfifo(File.join(repo, "pipe"))
+        discovered = Timeout.timeout(5) { Reanimator.discover(repo) }
+        expect(discovered.value(:supported_ruby_unreadable)).to include("Kernel.load 'pipe'")
+      end
+
+      it "treats a file Ruby could not parse as unreadable" do
+        files = {"widget.gemspec" => "Gem::Specification.new do |s|\n=begin\n  s.required_ruby_version = '>= 2.7'\nend\n"}
+        expect(floor_in(files).value(:supported_ruby_unreadable)).to eq("it does not parse as Ruby")
+      end
+
+      it "follows every load on a line, in parentheses, in a branch, and load from lib/ first" do
+        {
+          "second load after ;" => ["require_relative 'a'; require_relative 'gemspec'", {"a.rb" => ""}],
+          "parentheses" => ["require_relative('gemspec')", {}],
+          "self.require_relative" => ["self.require_relative 'gemspec'", {}],
+          "a bare load in a loaded file, which is Kernel#load" => ["require_relative 'loader'", {"loader.rb" => "load 'gemspec.rb'\n"}],
+          "instance_eval with a block, which runs no string" => ["require_relative 'gemspec'\n''.instance_eval { size }", {}],
+          "libraries installed where Bundler or npm put them, which are not this repository's" =>
+            ["require 'json'\nrequire_relative 'gemspec'", {
+              "vendor/bundle/ruby/3.4.0/gems/json/lib/json.rb" => "",
+              "gemfiles/vendor/bundle/ruby/3.4.0/gems/json/lib/json.rb" => "",
+              "vendor/ruby/3.4.0/bundler/gems/json/lib/json.rb" => "",
+              "node_modules/json/json.rb" => "",
+              ".bundle/json.rb" => "",
+              ".git/json.rb" => "",
+              "pkg/widget-1.0.0/lib/json.rb" => ""
+            }],
+          "load of a built path, as named" => ["Kernel.load File.expand_path('gemspec.common', __dir__)", {"gemspec.common" => common}],
+          "a modifier Ruby may skip" => ["require_relative 'gemspec' if false", {}]
+        }.each do |shape, (load, extra)|
+          files = gemspec_loading(load).merge("gemspec.rb" => common).merge(extra)
+          expect(floor_in(files).value(:supported_ruby)).to eq([">= 3.2"]), shape
+        end
+      end
+
+      it "follows autoload" do
+        {
+          "autoload" => "autoload :Common, File.expand_path('gemspec', __dir__)",
+          "Object.autoload" => "Object.autoload(:Common, './gemspec')",
+          "require_relative with .rb" => "require_relative 'gemspec.rb'"
+        }.each do |shape, load|
+          expect(floor_in(gemspec_loading(load).merge("gemspec.rb" => common)).value(:supported_ruby)).to eq([">= 3.2"]), shape
+        end
+      end
+
+      it "parses in the process when no child can be forked, and reaps every child it stops" do
+        allow(Process).to receive(:fork).and_raise(Errno::EAGAIN)
+        expect(floor_in(gemspec_loading("require_relative 'gemspec'").merge("gemspec.rb" => common)).value(:supported_ruby))
+          .to eq([">= 3.2"])
+      end
+
+      it "stops a parse that does not finish in time" do
+        stub_const("Reanimator::FloorReader::PARSE_SECONDS", 0.5)
+        allow_any_instance_of(Reanimator::FloorReader).to receive(:parse_file) { sleep 30 }
+        started = Time.now
+        expect(floor_in({}).value(:supported_ruby_unreadable)).to eq("it could not be parsed safely")
+        expect(Time.now - started).to be < 10
+        expect { Process.wait(-1, Process::WNOHANG) }.to raise_error(Errno::ECHILD) # stopped and reaped
+      end
+
+      it "ends a child whose parse raised quietly, with the file's floor unreadable" do
+        allow_any_instance_of(Reanimator::FloorReader).to receive(:parse_file).and_raise(RuntimeError, "boom in the child")
+        captured = Tempfile.new("stderr")
+        saved = $stderr.dup
+        $stderr.reopen(captured)
+        unreadable = floor_in({}).value(:supported_ruby_unreadable)
+        $stderr.reopen(saved)
+
+        expect(unreadable).to eq("it could not be parsed safely")
+        expect(File.read(captured.path)).not_to include("boom in the child")
+      ensure
+        $stderr.reopen(saved) if saved
+        saved&.close
+      end
+
+      it "reads past a string that is not valid UTF-8" do
+        files = gemspec_loading("require_relative 'lib/widget/version'").merge(
+          "lib/widget/version.rb" => "BOM = \"\\xFF\\xFE\".b\n#{common}"
+        )
+        expect(floor_in(files).value(:supported_ruby)).to eq([">= 3.2"])
+      end
+
+      it "survives input that overflows the parser, however often, and refuses a file too large" do
+        floor = "Gem::Specification.new { |s| s.required_ruby_version = '>= 3.1' }\n"
+        deep = "x = #{"!" * 30_000}1\n#{floor}"
+        repo = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge("a.gemspec" => deep, "b.gemspec" => deep))
+        # Prism refuses it as a parse error on some platforms and overflows on
+        # others; either way that file's floor is unreadable and the run goes on.
+        expect(Reanimator.discover(repo).value(:supported_ruby_unreadable)).to match(/nested too deeply|parsed safely|does not parse/)
+
+        expect(floor_in("widget.gemspec" => "x = #{"[" * 5000}#{"]" * 5000}\n#{floor}").value(:supported_ruby)).to eq([">= 3.1"])
+        expect(floor_in("widget.gemspec" => "#{"# padding\n" * 30_000}#{floor}").value(:supported_ruby_unreadable))
+          .to eq("it is too large to read")
+      end
+
+      it "does not guess where a bare require leads once the load path holds more than lib/" do
+        standard = "lib = File.expand_path('lib', __dir__)\n$LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)\nrequire 'widget/common'"
+        expect(floor_in(gemspec_loading(standard).merge("lib/widget/common.rb" => common)).value(:supported_ruby)).to eq([">= 3.2"])
+
+        moved = "$LOAD_PATH.unshift(__dir__)\nrequire 'common'"
+        expect(floor_in(gemspec_loading(moved).merge("common.rb" => common)).value(:supported_ruby_unreadable)).to include("require 'common'")
+      end
+
+      it "treats a load or eval reached by name as one it cannot follow" do
+        files = gemspec_loading("send(:require_relative, 'gemspec')").merge("gemspec.rb" => common)
+        expect(floor_in(files).value(:supported_ruby_unreadable)).to include("send(:require_relative, 'gemspec')")
+      end
+
+      it "treats a library require it cannot place exactly, eval and a loaded gemspec as unfollowed" do
+        repo = make_repo(files: gem_with(requirement: "'>= 3.1'", matrix: %w[3.4]).merge(
+          gemspec_loading("require 'widget/version'"), "other/version.rb" => common, "lib/widget/.keep" => ""
+        ))
+        File.symlink(File.join(repo, "other/version.rb"), File.join(repo, "lib/widget/version.rb"))
+        expect(Reanimator.discover(repo).value(:supported_ruby_unreadable)).to include("require 'widget/version'")
+
+        {
+          "a path that is not normal" => ["require 'widget/../widget/version'", {"lib/widget/version.rb" => common}],
+          "a loaded gemspec" => ["Gem::Specification.load('base.gemspec')", {}],
+          "a bare load, which in a gemspec loads a gemspec" => ["load 'gemspec.rb'", {"gemspec.rb" => common}],
+          "a name held in lib/ and at the root" => ["Kernel.load 'gemspec.rb'", {"lib/gemspec.rb" => common, "gemspec.rb" => common}],
+          "a name held only outside lib/" => ["require 'gemspec'", {"gemspec.rb" => common}],
+          "a name held twice" => ["require 'widget/common'", {"lib/widget/common.rb" => common, "support/widget/common.rb" => common}],
+          "a load of a name not held" => ["Kernel.load 'nowhere.rb'", {}],
+          "a require of ~, held in lib/" => ["require '~common'", {"lib/~common.rb" => common}],
+          "eval reached by name" => ["send(:eval, File.read('gemspec.rb'))", {}],
+          "a binding reached by name" => ["ERB.new(File.read('t.erb')).result(send(:binding))", {}],
+          "autoload reached by name" => ["send(:autoload, :Common, './gemspec')", {}],
+          "a require whose case differs from its file" => ["require 'Widget/Common'", {"lib/widget/common.rb" => common}],
+          "a file whose case differs from its require" => ["require 'widget/common'", {"lib/Widget/Common.rb" => common}],
+          "a name held only in pkg/ source, not a built copy" => ["require 'core_floor'", {"pkg/core/lib/core_floor.rb" => common}],
+          "a template given a binding" => ["ERB.new(File.read('t.erb')).result(binding)", {}]
+        }.each do |shape, (load, extra)|
+          expect(floor_in(gemspec_loading(load).merge(extra)).value(:supported_ruby_unreadable)).to include(load), shape
+        end
+      end
+
+      it "keeps a literal floor in the gemspec when another load cannot be followed" do
+        files = {"widget.gemspec" => "require 'bundler'\nrequire File.join(__dir__, 'x')\nGem::Specification.new { |s| s.required_ruby_version = '>= 3.1' }\n"}
+        expect(floor_in(files).value(:supported_ruby)).to eq([">= 3.1"])
+      end
+    end
+
+    it "reads nothing after __END__, and reads a Gem::Requirement.new floor" do
+      floor = "Gem::Specification.new do |s|\n  s.required_ruby_version = Gem::Requirement.new(\">= 3.1\")\nend\n__END__\n"
+      discovered = Reanimator.discover(make_repo(files: narrowed_support.merge("widget.gemspec" => "#{floor}s.required_ruby_version = '>= 2.7'\n")))
+      expect([discovered.value(:supported_ruby), discovered.value(:supported_ruby_unreadable)]).to eq([[">= 3.1"], nil])
     end
 
     it "reads a frozen literal, and a # inside a string is not a comment" do

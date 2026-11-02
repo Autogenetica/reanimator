@@ -53,13 +53,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   or invalid YAML) is named in the result but never softens it: the readable
   workflows decide, so a narrowing they prove still blocks, and an aliased
   workflow's Rubies are simply not counted. The declared floor is read from
-  every root gemspec, the lowest winning. Every line that mentions
-  `required_ruby_version` (outside comments and `=begin` blocks) must be a
-  complete assignment of string literals; anything else — a constant, `%q()`,
-  interpolation, a heredoc, a lookup, a value on the next line, `send`, `||=` —
-  makes the floor unreadable, reported as missing evidence asking for a
-  literal, never read as "no floor". Of 209 installed gems with a gemspec, two
-  are affected. A floor set outside any `.gemspec` file is not seen.
+  every root gemspec, the lowest winning, by **parsing** the gemspec and the
+  local files it loads with Prism — never running them (ADR-011; `prism` is
+  a new runtime dependency). Every assignment of `required_ruby_version`
+  counts, wherever it sits; its value must be a string literal, an array of
+  them, `.freeze` on one or `Gem::Requirement.new` of them, and any other
+  route to the floor — a constant, an interpolation, `send`, `||=`,
+  `instance_variable_set`, a write of `@required_ruby_version`, a method
+  named for the floor, code run from a string — makes the floor unreadable,
+  reported as missing evidence asking for a literal, never read as "no
+  floor". Loads are followed wherever they appear: `require_relative`,
+  `Kernel.load`, `autoload`, `File.expand_path` from `__dir__` or
+  `__FILE__`, `File.dirname(__FILE__)`/`__dir__` `+ "/x"`, and a bare
+  `require` of a name the repository holds only as `lib/<name>` - four
+  levels deep, each file read on its own as UTF-8 whatever the locale. A
+  load Reanimator cannot follow (a path built at runtime, one leaving the
+  repository or passing through a symlink, a name held anywhere else, a
+  load reached by name, a bare `load` in the gemspec, which loads another
+  gemspec) makes the floor unreadable unless the gemspec itself assigns a
+  literal floor. A file it cannot read or parse makes the floor unreadable
+  regardless. Each file is parsed in a forked child, so input that
+  overflows the parser makes only that file's floor unreadable instead of
+  ending the run. Across 1,397 installed
+  gemspecs, the reader never gave a higher floor than Ruby nor "no floor"
+  where Ruby had one; six gems read as unreadable. A detector that overflows
+  the stack is now recorded as a discovery failure like any other crash.
   Exclude keys and values match loosely (case aside, `7.0` as `7`), a job with
   `if: false` is not credited, and — as before — a workflow that only runs on
   manual dispatch is still read. Gemspec requirements written as arrays — on one
