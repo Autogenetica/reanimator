@@ -25,7 +25,10 @@ module Reanimator
     # Names that reach a load, or run code from a string, when called
     # indirectly - by send, method(...).call - so the parse cannot see them.
     INDIRECT_LOADS = (LOADS + %i[autoload]).map(&:to_s).freeze
-    INDIRECT_EVALS = (EVALS + %i[binding instance_exec class_exec module_exec]).map(&:to_s).freeze
+    INDIRECT_EVALS = (EVALS + %i[binding]).map(&:to_s).freeze
+    # Trees that hold other projects' files - installed gems, packages, built
+    # packages, git's own store - whose names say nothing about this one.
+    NOT_THE_REPOSITORY = %w[vendor/bundle/ .bundle/ node_modules/ pkg/ .git/].freeze
     # How many levels of loads are followed from a gemspec.
     MAX_LOAD_DEPTH = 4
     # Real gemspecs are a few kilobytes; a file far larger is not parsed.
@@ -50,6 +53,7 @@ module Reanimator
     # owner's own statement, which then settles it.
     # @return [Array(Array<String>, String, nil)]
     def read(gemspec)
+      held_files # indexed once, before any parse is forked, so each child shares it
       requirements, own = [], nil
       unfollowed = each_reading(gemspec) do |file, reading|
         return [[], "#{relative(file)} could not be read"] if reading.unread
@@ -102,6 +106,8 @@ module Reanimator
 
       in_child { parse_file(file, gemspec) } ||
         refused(Reading.new([], nil, [], nil, false), "it could not be parsed safely")
+    rescue Errno::EAGAIN, Errno::EMFILE, Errno::ENOMEM # no child to be had: parse here instead
+      parse_file(file, gemspec)
     end
 
     # The block's result, computed in a forked child and passed back, or nil
@@ -111,21 +117,29 @@ module Reanimator
       reader, writer = IO.pipe
       pid = fork do
         reader.close
-        writer.binmode.write(Marshal.dump(yield))
-        writer.close
-        exit!(true)
+        begin
+          writer.binmode.write(Marshal.dump(yield))
+          writer.close
+          exit!(true)
+        rescue Exception # standard:disable Lint/RescueException - the child must end here, quietly
+          exit!(false) # neither a backtrace nor the parent's at_exit hooks
+        end
       end
       writer.close
-      unless reader.wait_readable(PARSE_SECONDS)
-        Process.kill(:KILL, pid)
-        Process.wait(pid)
-        return
-      end
+      return unless reader.wait_readable(PARSE_SECONDS)
+
       data = reader.binmode.read
       Process.wait(pid)
+      pid = nil
       Marshal.load(data) if $?.success? && !data.empty? # standard:disable Security/MarshalLoad
     ensure
       reader&.close
+      # A child still running - out of time, or its parent interrupted - is
+      # stopped and reaped, never left holding the run's output open.
+      if pid
+        Process.kill(:KILL, pid) rescue nil # standard:disable Style/RescueModifier
+        Process.wait(pid) rescue nil # standard:disable Style/RescueModifier
+      end
     end
 
     def parse_file(file, gemspec)
@@ -191,6 +205,8 @@ module Reanimator
     # cannot see, and one that names an eval or a binding runs code it cannot
     # see. Prose that merely mentions them is just text.
     def name(text, node, lines, reading)
+      return unless text.valid_encoding? # bytes, not a name Ruby could call
+
       if text.match?(/\A@?#{FLOOR}=?\z/o) || INDIRECT_EVALS.include?(text)
         unreadable(reading, node, lines)
       elsif INDIRECT_LOADS.include?(text)
@@ -300,11 +316,20 @@ module Reanimator
 
     # Every repository file whose path ends in the name, e.g. lib/w/version.rb
     # and support/w/version.rb for "w/version.rb".
+    #
+    # Names are compared without regard to case, which a case-insensitive
+    # filesystem ignores too: a require in another case than its file is held
+    # - and so not followed - rather than taken for a library.
     def repository_named(name)
-      @named ||= {}
-      @named[name] ||= repository.glob("**/#{name}").select do |path|
-        path == name || path.end_with?("/#{name}")
-      end
+      wanted = name.downcase
+      held_files.select { |path| path.downcase == wanted || path.downcase.end_with?("/#{wanted}") }
+    end
+
+    # Every name the repository holds, outside trees that hold other
+    # projects. It only decides whether a name is held; a file that is
+    # followed is still held to the repository by repository_file.
+    def held_files
+      @held_files ||= Dir.glob("**/*", File::FNM_DOTMATCH, base: root).reject { |path| path.start_with?(*NOT_THE_REPOSITORY) }
     end
 
     # The path File.expand_path("x", __dir__), File.expand_path("../x",

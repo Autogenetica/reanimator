@@ -68,7 +68,11 @@ they mean to Ruby.
   can change in more ways than a parse can follow: a name held only as
   `lib/<name>` (a gem's own load path) is followed, and for `load` so is one
   held only at the root; a name held anywhere else, or in more than one
-  place, is not followed; a name not held at all is a library for `require`.
+  place, or in another case, is not followed; a name not held at all is a
+  library for `require`. Installed gems (`vendor/bundle`, `.bundle`),
+  `node_modules`, built packages (`pkg/`) and `.git` hold other projects'
+  files and are not searched, so a repository reads the same in CI, where
+  the bundle is often installed inside the checkout, as on a laptop.
   A bare `load` in the gemspec itself is `Gem::Specification.load` - the
   gemspec is evaluated in that class - so it loads another gemspec and is not
   followed. `~` is kept or expanded as Ruby does for each. Nested loads are
@@ -84,11 +88,13 @@ they mean to Ruby.
   the gemspec itself assigns a literal floor**, the owner's own statement,
   which then settles it.
 - **Each file is parsed in a forked child** where the platform can fork.
-  Prism and the walk can exhaust the stack on pathological input - a 10 KB
-  chain of `!` is enough - and an overflow repeated in one process can kill
-  it outright, so a parse that dies takes only the child, and that file's
-  floor reads as unreadable. A child that has not answered in ten seconds is
-  stopped, with the same result. A file that does not parse, cannot be read, or
+  Prism and the walk can exhaust the stack on pathological input - on
+  macOS a 10 KB chain of `!` is enough - and an overflow repeated in one
+  process can kill it outright, so a parse that dies takes only the child,
+  and that file's floor reads as unreadable. A child that has not answered
+  in ten seconds, or whose parent is interrupted, is stopped and reaped; a
+  child that fails exits quietly, running none of the parent's exit hooks;
+  and where no child can be had, the file is parsed in the process. A file that does not parse, cannot be read, or
   is over 256 KB is unreadable too. A detector that still crashes is a
   discovery failure, which ADR-012 makes block the run.
 
@@ -100,6 +106,8 @@ as "no floor".
 - An unfollowed load beside a literal floor in the gemspec, when that load
   lowers the floor - or when the gemspec's floor sits in a helper it never
   calls, which still settles it.
+- A floor set by a library outside the repository that the gemspec
+  requires: a library is not read, so its floor is not seen.
 - A route to the floor, a load or an eval through a name the parse cannot
   see - any computed name (`public_send(var)`, an interpolated symbol, a
   method object passed around), the requirement object mutated through its

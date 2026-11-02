@@ -2,6 +2,7 @@
 
 require "json"
 require "open3"
+require "tempfile"
 require "timeout"
 
 # Section 16: an escalation has to reach a human without anyone reading a
@@ -487,6 +488,9 @@ RSpec.describe "escalation delivery" do
           "second load after ;" => ["require_relative 'a'; require_relative 'gemspec'", {"a.rb" => ""}],
           "parentheses" => ["require_relative('gemspec')", {}],
           "self.require_relative" => ["self.require_relative 'gemspec'", {}],
+          "a bare load in a loaded file, which is Kernel#load" => ["require_relative 'loader'", {"loader.rb" => "load 'gemspec.rb'\n"}],
+          "instance_eval with a block, which runs no string" => ["require_relative 'gemspec'\n''.instance_eval { size }", {}],
+          "a library vendored by the bundle, which is not this repository's" => ["require 'json'\nrequire_relative 'gemspec'", {"vendor/bundle/ruby/3.4.0/gems/json/lib/json.rb" => ""}],
           "load of a built path, as named" => ["Kernel.load File.expand_path('gemspec.common', __dir__)", {"gemspec.common" => common}],
           "a modifier Ruby may skip" => ["require_relative 'gemspec' if false", {}]
         }.each do |shape, (load, extra)|
@@ -511,6 +515,27 @@ RSpec.describe "escalation delivery" do
         started = Time.now
         expect(floor_in({}).value(:supported_ruby_unreadable)).to eq("it could not be parsed safely")
         expect(Time.now - started).to be < 10
+      end
+
+      it "ends a child whose parse raised quietly, with the file's floor unreadable" do
+        allow_any_instance_of(Reanimator::FloorReader).to receive(:parse_file).and_raise(RuntimeError, "boom in the child")
+        captured = Tempfile.new("stderr")
+        saved = $stderr.dup
+        $stderr.reopen(captured)
+        unreadable = floor_in({}).value(:supported_ruby_unreadable)
+        $stderr.reopen(saved)
+
+        expect(unreadable).to eq("it could not be parsed safely")
+        expect(File.read(captured.path)).not_to include("boom in the child")
+      ensure
+        $stderr.reopen(saved) if saved
+      end
+
+      it "reads past a string that is not valid UTF-8" do
+        files = gemspec_loading("require_relative 'lib/widget/version'").merge(
+          "lib/widget/version.rb" => "BOM = \"\\xFF\\xFE\".b\n#{common}"
+        )
+        expect(floor_in(files).value(:supported_ruby)).to eq([">= 3.2"])
       end
 
       it "survives input that overflows the parser, however often, and refuses a file too large" do
@@ -554,6 +579,9 @@ RSpec.describe "escalation delivery" do
           "a load of a name not held" => ["Kernel.load 'nowhere.rb'", {}],
           "a require of ~, held in lib/" => ["require '~common'", {"lib/~common.rb" => common}],
           "eval reached by name" => ["send(:eval, File.read('gemspec.rb'))", {}],
+          "a binding reached by name" => ["ERB.new(File.read('t.erb')).result(send(:binding))", {}],
+          "autoload reached by name" => ["send(:autoload, :Common, './gemspec')", {}],
+          "a require whose case differs from its file" => ["require 'Widget/Common'", {"lib/widget/common.rb" => common}],
           "a template given a binding" => ["ERB.new(File.read('t.erb')).result(binding)", {}]
         }.each do |shape, (load, extra)|
           expect(floor_in(gemspec_loading(load).merge(extra)).value(:supported_ruby_unreadable)).to include(load), shape

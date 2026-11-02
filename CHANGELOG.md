@@ -71,9 +71,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   repository or passing through a symlink, a name held anywhere else, a
   load reached by name, a bare `load` in the gemspec, which loads another
   gemspec) makes the floor unreadable unless the gemspec itself assigns a
-  literal floor, and so does a file it cannot read or parse. Each file is
-  parsed in a forked child, so input that overflows the parser makes only
-  that file's floor unreadable instead of ending the run. Across 1,397 installed
+  literal floor. A file it cannot read or parse makes the floor unreadable
+  regardless. Each file is parsed in a forked child, so input that
+  overflows the parser makes only that file's floor unreadable instead of
+  ending the run. Across 1,397 installed
   gemspecs, the reader never gave a higher floor than Ruby nor "no floor"
   where Ruby had one; six gems read as unreadable. A detector that overflows
   the stack is now recorded as a discovery failure like any other crash.
